@@ -11,6 +11,7 @@ import numpy as np
 from backend.stream_space_curve import StreamSpaceCurve
 from backend.pca import pca
 from sklearn.cluster import KMeans
+import scipy.spatial.distance as dist
 
 sel_feature = [
     "curvature",  # 曲率
@@ -67,6 +68,72 @@ class SegmentTokenizer(object):
         self.generate_vocabulary_based_on_streamline_segmentation(k=2, v=32)
         # 生成流线的词向量表达.
         self.generate_streamlined_word_vector_expressions(v=32)
+
+    def calculate_main_streamline_index(self, cnt, distant_typeid=0):
+        """应用1：流场压缩(pca+kmeans).
+        """
+        print("calculate_main_streamline_index ", cnt, " ...")
+        assert(0 <= cnt <= len(self.all_line_vocabulary_vectors))
+        # 1.计算不相似度矩阵.
+        dissimilarity_matrix = self.__calculate_dissimilarity_matrix(distant_typeid)
+        # 2.筛选cnt条最不相似的流线.
+        S = []
+        max_dissim = 0 # 初始化最大不相似度为0.
+        if cnt > 0: # 筛选出具有最大不相似度的一条流线.
+            S.append(np.where(dissimilarity_matrix==np.max(dissimilarity_matrix))[0][0])
+        while len(S) < cnt:
+            tmp_line = None # 初始化当前最不相似流线.
+            max_dissim = 0 # 初始化最大不相似度为0.
+            for x in self.all_line_vocabulary_vectors.keys():
+                if x in S:
+                    continue
+                tmp_dissim = 0 # 初始化当前不相似度为0.
+                for y in S:
+                    tmp_dissim += dissimilarity_matrix[x][y]
+                if tmp_dissim > max_dissim:
+                    tmp_line = x
+            S.append(tmp_line)
+        # 3.整理筛选出的最不相似流线索引，及其相应的不相似度矩阵.
+        S.sort()
+        prototype_index = np.array(S)
+        dissimilarity_matrix = dissimilarity_matrix[:,S]
+        return dissimilarity_matrix, prototype_index
+
+    def __calculate_dissimilarity_matrix(self, distant_typeid=0):
+        dissimilarity_matrix = []
+        for index_x, vocabulary_x in self.all_line_vocabulary_vectors.items():
+            row_data = []
+            for index_y, vocabulary_y in self.all_line_vocabulary_vectors.items():
+                row_data.append(self.__dissim(np.array(vocabulary_x), np.array(vocabulary_y), distant_typeid))
+            dissimilarity_matrix.append(np.array(row_data))
+        return np.array(dissimilarity_matrix)
+
+    def __dissim(self, x, y, distant_typeid=0):
+        distance = 0
+        if distant_typeid == 0:  # 欧几里得距离.
+            distance = np.linalg.norm(x-y)
+        elif distant_typeid == 1:  # 余弦距离.
+            distance = 1 - np.dot(x,y)/(np.linalg.norm(x)*np.linalg.norm(y))
+        elif distant_typeid == 2:  # 曼哈顿距离.
+            distance = np.linalg.norm(x-y,ord=1)
+        elif distant_typeid == 3:  # 切比雪夫距离.
+            distance = np.linalg.norm(x-y,ord=np.inf)
+        elif distant_typeid == 4:  # 夹角余弦(Cosine).
+            distance = np.dot(x,y)/(np.linalg.norm(x)*(np.linalg.norm(y)))
+        elif distant_typeid == 5:  # 汉明距离(Hamming distance).
+            distance = np.shape(np.nonzero(x-y)[0])[0]
+        elif distant_typeid == 6:  # 杰卡德相似系数(Jaccard similarity coefficient).
+            distance = dist.pdist(np.array([x,y]),'jaccard')[0]
+            # 以下待补充度量方法
+            # 基于distant_typeid = 7（曼哈顿距离）计算不相似度.
+
+            # 基于distant_typeid = 8（曼哈顿距离）计算不相似度.
+
+            # 基于distant_typeid = 9（曼哈顿距离）计算不相似度.
+            #
+        else:
+            raise("[ERROR] Unkonw distant type id!")
+        return distance
 
     def get_all_point_features_from_line(self):
         print("get_all_point_features_from_line...")
@@ -206,8 +273,10 @@ class SegmentTokenizer(object):
             # plotBestFit(finalData, reconMat)
             self.segment_feature_vectors_kdim[line] = np.array(finalData)
         # 2.KMeans聚类(k=v)
-        X = np.array([pt for line,value in self.segment_feature_vectors_kdim.items()\
-                                                    for pt in value], dtype="float64")
+        # streamlines_segment_token.py:210: ComplexWarning: Casting complex values to real discards the imaginary part
+        #   for pt in value], dtype="float64")
+        X = np.array([pt for line,value in self.segment_feature_vectors_kdim.items() for pt in value], dtype="float64")
+
         km = KMeans(n_clusters=v, random_state=28)
         km.fit(X)
         cluster_indexs = km.predict(X)
@@ -230,7 +299,13 @@ class SegmentTokenizer(object):
         return dictionary
 
     def generate_streamlined_word_vector_expressions(self, v=32):
+        """
+        consume time long, need a progress bar
+        :param v:
+        :return:
+        """
         print("generate_streamlined_word_vector_expressions...")
+
         # 1.生成每个分段词汇的独特向量(独热向量的长度即为词汇集合的大小V).
         for i in range(len(self.dictionary)):
             uh = [0 for v in range(v)]
