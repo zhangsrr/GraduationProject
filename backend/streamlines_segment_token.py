@@ -8,8 +8,8 @@ step 1. 流线分段
 1.5 根据分段的词汇生成流线的词向量表达
 """
 import numpy as np
-from stream_space_curve import StreamSpaceCurve
-from pca import pca, plotBestFit
+from backend.stream_space_curve import StreamSpaceCurve
+from backend.pca import pca
 from sklearn.cluster import KMeans
 
 sel_feature = [
