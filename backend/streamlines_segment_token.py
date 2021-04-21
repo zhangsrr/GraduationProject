@@ -300,11 +300,12 @@ class SegmentTokenizer(object):
 
     def generate_streamlined_word_vector_expressions(self, v=32):
         """
-        consume time long, need a progress bar
         :param v:
         :return:
         """
         print("generate_streamlined_word_vector_expressions...")
+
+        # consume time long, need a progress bar
 
         # 1.生成每个分段词汇的独特向量(独热向量的长度即为词汇集合的大小V).
         for i in range(len(self.dictionary)):
