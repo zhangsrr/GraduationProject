@@ -31,14 +31,12 @@ class StreamlinesSegment(object):
         self.mul_polydata_output = []               # 多组·筛选出的流线数据(vtkPolyData)
         self.mul_lines_count_output = []            # 多组·筛选出的流线数量
 
-
     def __clear_all_data(self):
         """
         Clear data for all class member variables.
         :return:
         """
         self.__init__()
-
 
     def filter_streamlines(self, src_streamlines_filename,
                                  dest_streamlines_count_list,
@@ -75,7 +73,6 @@ class StreamlinesSegment(object):
         self.__clear_all_data()
         return True
 
-
     def _filtering_streamlines_based_on_geometric_distance(self, dest_streamlines_count_list, single_thread=False, n_jobs=-1, verbose=True):
         """
         Filtering streamlines based on geometric distance.
@@ -102,7 +99,6 @@ class StreamlinesSegment(object):
             self.mul_dissimilarity_matrix.append(dissimilarity_matrix)
             self.mul_prototype_index.append(prototype_index)
             self.mul_lines_count_output.append(cnt)
-
 
     def _filtering_streamlines_based_on_segment(self, dest_streamlines_count_list):
         """
@@ -134,7 +130,6 @@ class StreamlinesSegment(object):
             self.mul_prototype_index.append(prototype_index)
             self.mul_lines_count_output.append(cnt)
 
-
     def __load_streamlines_data_from_vtk_file(self, vtk_format_filename):
         """
         Load the streamlines data.
@@ -146,7 +141,6 @@ class StreamlinesSegment(object):
         reader.SetFileName(vtk_format_filename)
         reader.Update()
         self.polydata_input = reader.GetOutput()
-
 
     def __extract_streamlines_info_from_polydata(self):
         """
