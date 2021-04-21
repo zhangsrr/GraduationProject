@@ -161,8 +161,8 @@ class SegmentTokenizer(object):
         one_line_segment_indexs = [[segment_point_index[i-1], segment_point_index[i]]\
                                   for i in range(len(segment_point_index))[1:]]
 
-        print("=========one_line_segment_indexs=========")
-        print(one_line_segment_indexs)
+        # print("=========one_line_segment_indexs=========")
+        # print(one_line_segment_indexs)
 
         for segment_indexs in one_line_segment_indexs:
             segment_feature_vector = self.calculate_one_segment_vectors(line_index, segment_indexs, dim)
