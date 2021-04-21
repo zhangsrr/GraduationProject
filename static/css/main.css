@@ -1,0 +1,81 @@
+.top-banner {
+    z-index: 999;
+	text-align: right;
+	height: 30px !important;
+	line-height: 30px !important;
+}
+.top-banner a {
+	color:green !important;
+	text-shadow: none;
+}
+.column {
+	margin: 60px auto;
+	float: none;
+	text-align: center;
+	width: 75%;
+	min-height: 100px;
+}
+
+strong {
+    color: #778899;
+}
+
+#signOut{
+    position: absolute;
+    right: 0px;
+    color: #778899;
+}
+
+#button1 {
+    border: none;
+	padding: 2.5em 2em;
+	background: #ADD8E6;
+	color: #828282;
+	font-family: "楷体";
+	font-size: 1.6em;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	cursor: pointer;
+	display: inline-block;
+	margin: 30px 2px;
+	border-radius: 25px;
+	background-image: url(../img/db.png);
+	background-repeat: no-repeat;
+	background-size:47% 53%;
+}
+
+#button2 {
+    border: none;
+	padding: 2.5em 2em;
+	background: #6CA6CD;
+	color: #696969;
+	font-family: "楷体";
+	font-size: 1.6em;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	cursor: pointer;
+	display: inline-block;
+	margin: 30px 2px;
+	border-radius: 25px;
+	background-image: url(../img/search.png);
+	background-repeat: no-repeat;
+	background-size:47% 53%;
+}
+
+#button3 {
+    border: none;
+	padding: 2.5em 2em;
+	background: #4A708B;
+	color: #B5B5B5;
+	font-family: "楷体";
+	font-size: 1.6em;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	cursor: pointer;
+	display: inline-block;
+	margin: 30px 2px;
+	border-radius: 25px;
+	background-image: url(../img/ana.png);
+	background-repeat: no-repeat;
+    background-size:47% 53%;
+}
