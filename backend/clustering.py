@@ -12,7 +12,7 @@ from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
 from pyclustering.cluster.cure import cure
 import sys
 from sklearn import metrics
-
+import datetime
 # np.set_printoptions(threshold=sys.maxsize)
 
 def readfile():
@@ -398,28 +398,49 @@ def test(arg):
 def matrix_gpu():
     X = readfile()
 
+def py_matmul4(a, b):
+    ra, ca = a.shape
+    rb, cb = b.shape
+    assert ca == rb, f"{ca} != {rb}"
 
+    return np.matmul(a, b)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("Error arguments input, should be python test.py cluster_mode")
-        print("e.g. python test.py KMeans")
-        exit(-1)
-    cluster_mode = sys.argv[1]
-    assert (cluster_mode == "KMeans" or
-            cluster_mode == "KMedoids" or
-            cluster_mode == "DBSCAN" or
-            cluster_mode == "OPTICS" or
-            cluster_mode == "MeanShift" or
-            cluster_mode == "AP" or
-            cluster_mode == "AffinityPropagation" or
-            cluster_mode == "CURE")
-    test(cluster_mode)
+    # if len(sys.argv) != 2:
+    #     print("Error arguments input, should be python test.py cluster_mode")
+    #     print("e.g. python test.py KMeans")
+    #     exit(-1)
+    # cluster_mode = sys.argv[1]
+    # assert (cluster_mode == "KMeans" or
+    #         cluster_mode == "KMedoids" or
+    #         cluster_mode == "DBSCAN" or
+    #         cluster_mode == "OPTICS" or
+    #         cluster_mode == "MeanShift" or
+    #         cluster_mode == "AP" or
+    #         cluster_mode == "AffinityPropagation" or
+    #         cluster_mode == "CURE")
+    # test(cluster_mode)
+    # starttime = datetime.datetime.now()
+    # a = np.array([[1,2,3],
+    #               [4,5,6],
+    #               [7,8,9],
+    #               [10,11,12]])
+    # b = np.array([[1,2,3,4],
+    #              [5,6,7,8],
+    #              [9,10,11,12]])
+    # ar, ac = a.shape
+    # print(ar, ac)
+    # br, bc = b.shape
+    # print(br, bc)
+    # assert (ac == br)
+    # result = py_matmul4(a, b)
+    # endtime = datetime.datetime.now()
+    # print(endtime-starttime)
 
     # kmeans() # ok
     # meanshift()  # ok
     # affinitypropagation()  # ok
-    # dbscan()  # ok
+    dbscan()  # ok
     # optics()  # ok
     # clustering_kmedoids()  # ok
     # clustering_cure()  # ok

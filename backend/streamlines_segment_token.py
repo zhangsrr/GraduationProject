@@ -18,6 +18,7 @@ from sklearn import metrics
 
 import scipy.spatial.distance as dist
 import pandas as pd
+from datetime import datetime
 
 sel_feature = [
     "curvature",  # 曲率
@@ -25,6 +26,9 @@ sel_feature = [
     "tortuosity",  # 弯曲度
     "velocity_direction_entropy"  # 速度方向熵，计算有问题，得到的值全是0
 ]
+
+starttime = datetime.now()
+endtime = datetime.now()
 
 class SegmentTokenizer(object):
     def __init__(self,
@@ -76,8 +80,14 @@ class SegmentTokenizer(object):
         # 计算流线分段的特征向量.
         self.calculate_all_segment_vectors(dim=12) #【注】此处的dim应该由外部主函数传入，暂时写为特定值. dim只能是len(sel_feature)的倍数
         # 基于流线分段的特征向量生成词汇. 用到聚类算法
+        global endtime
+        endtime = datetime.now()
+        print("Finish calculate all segment vectors: " + str(endtime-starttime))
         self.generate_vocabulary_based_on_streamline_segmentation(k=2, v=32)
+
         # 生成流线的词向量表达.
+        endtime = datetime.now()
+        print("Start generate streamline word vector: " + str(endtime - starttime))
         self.generate_streamlined_word_vector_expressions(v=32)
 
     def calculate_main_streamline_index(self, cnt, distant_typeid=0):
@@ -220,6 +230,9 @@ class SegmentTokenizer(object):
     def calculate_all_segment_vectors(self, dim=12):
         print("calculate_all_segment_vectors...")
         print("streamlines_lines_index_data =", len(self.streamlines_lines_index_data))  #len()是vtk文件流线总数
+        global endtime
+        endtime = datetime.now()
+        print("Start calculate all segment vectors: "+str(endtime-starttime))
         for line_index in range(len(self.streamlines_lines_index_data)):
             self.calculate_one_line_segments_vectors(line_index, dim)
 
@@ -333,6 +346,9 @@ class SegmentTokenizer(object):
         # 1.pca主成分分析（降到k维）
         # print("self.segment_feature_vectors.items():")
         # print(self.segment_feature_vectors.items())
+        global endtime
+        endtime = datetime.now()
+        print("Start PCA reduce dimension: " + str(endtime-starttime))
         for line,value in self.segment_feature_vectors.items():
             # print("line, value: " + str(line))
             # print(value)
@@ -351,6 +367,8 @@ class SegmentTokenizer(object):
         # streamlines_segment_token.py:210: ComplexWarning: Casting complex values to real discards the imaginary part
         #   for pt in value], dtype="float64")
         # 此时self.segment_feature_vectors_kdim都降成了k维，即pt均为k维
+        endtime = datetime.now()
+        print("Finish PCA reduce dimension and Start Clustering: " + str(endtime - starttime))
         X = np.array([pt for line, value in self.segment_feature_vectors_kdim.items() for pt in value], dtype="float64")  # 2668
 
         df = pd.DataFrame(X)
@@ -422,7 +440,7 @@ class SegmentTokenizer(object):
             # eps保持不变，increase min_samples，
             # that will decrease the sizes of individual clusters and increase the number of clusters
             eps = 0.2
-            min_samples = 4  # double dataset dimensionality
+            min_samples = 50  # double dataset dimensionality
             print("eps="+str(eps))
             print("min_samples="+str(min_samples))
             db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
@@ -644,6 +662,8 @@ class SegmentTokenizer(object):
 
         # 4. Normalized validity measurement
         # empty
+        endtime = datetime.now()
+        print("Finish Clustering: " + str(endtime - starttime))
 
         self.dictionary = self.__vectors2words(cluster_centers)  # 词典
         print("\nlength of self.dictionary:")
@@ -698,6 +718,7 @@ class SegmentTokenizer(object):
         :return:
         """
         print("generate_streamlined_word_vector_expressions...")
+        global endtime
         # consume time long, need a progress bar
 
         # 1.生成每个分段词汇的独特向量(独热向量的长度即为词汇集合的大小V).
@@ -715,13 +736,14 @@ class SegmentTokenizer(object):
         for index, streamline in self.segment_vocabularys_index.items():
             # segment_vocabularys_index.items()是[pts.x_pts.y_]这样的表达形式
             if index in process_bar:
+                endtime = datetime.now()
+                print("Processing " + str(index) + " streamline: " + str(endtime-starttime))
                 s_perc = "|"
                 s = "##"
                 s_perc += s * process_bar.index(index)  # s_perc = 几倍的s ##########
                 print(s_perc, int(process_bar.index(index) / (len(process_bar) - 1) * 100), "%")
 
             S = np.array([0 for k in range(v*v)])
-            # print("index in self.segment_vocabularys_index.items(): " + str(index) + "/" + str(len_segment_vocabulary_index))
             for i in range(len(streamline)):
                 # print("i in range(len(streamline)): " + str(i))
                 oa = self.unique_heat_vectors_dictionary[self.segment_vocabularys_index[index][i]]
