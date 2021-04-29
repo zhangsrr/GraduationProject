@@ -422,8 +422,10 @@ class SegmentTokenizer(object):
             print("Parameters: ")
             # eps保持不变，increase min_samples，
             # that will decrease the sizes of individual clusters and increase the number of clusters
-            eps = 0.4
-            min_samples = 50  # double dataset dimensionality
+            eps = input("eps= (usually between 0 and 1, float)\n")
+            # eps = 0.4
+            min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
+            # min_samples = 50  # double dataset dimensionality
             print("eps="+str(eps))
             print("min_samples="+str(min_samples))
             db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
@@ -466,14 +468,17 @@ class SegmentTokenizer(object):
             # min_samples=8, xi=0.15, min_cluster_size=10 这样的参数设置对于原始流场来说，产生的簇太多了，有835个，sil_co分数为负
 
             # 一个点要想成为核心点，与其本身距离不大于epsilon的点的数目至少有min_samples个
-            min_samples = 25  # 对于原始流场，这个参数应该要更大，试试25-50
-            print("min_samples=" + str(min_samples))
+            min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
+            # min_samples = 25  # 对于原始流场，这个参数应该要更大，试试25-50
 
             xi = .15 # higher, less clusters
-            print("xi="+str(xi))
 
             # 一个簇至少包含的点数目
-            min_cluster_size = 50  # 对于原始流场，这个参数应该要更大，50-100为佳
+            min_cluster_size = input("min_cluster_size= (MinPts for one cluster, better between 50 and 100)\n")
+            # min_cluster_size = 50  # 对于原始流场，这个参数应该要更大，50-100为佳
+
+            print("xi="+str(xi))
+            print("min_samples=" + str(min_samples))
             print("min_cluster_size="+str(min_cluster_size))
 
             eps = 0.2
@@ -517,7 +522,8 @@ class SegmentTokenizer(object):
             print("Start Clustering for MeanShift...")
             # time-complexity O(n^2), n is the number of points
             print("Parameters for estimating bandwidth: ")
-            quantile = 0.4
+            # quantile = 0.4
+            quantile = input("quantile= (range from 0 to 1, float)\n")
             print("quantile="+str(quantile))
             bandwidth = estimate_bandwidth(X, quantile=quantile)
             print("Parameters for Meanshift: ")
@@ -549,10 +555,15 @@ class SegmentTokenizer(object):
             print("Start Clustering for AffinityPropagation...")
             print("Parameters: ")
             damping = 0.85
-            print("damping="+str(damping))
             preference = -1000  # smaller, clusters less
-            print("preference="+str(preference))
             max_iter = 2000
+
+            damping = input("damping= (range from 0 to 1, float)\n")
+            preference = input("preference= (can be negative)\n")
+            max_iter = input("max_iter=")
+
+            print("damping=" + str(damping))
+            print("preference="+str(preference))
             print("max_iter=" + str(max_iter))
 
             ap_instance = AffinityPropagation(random_state=0,
@@ -583,10 +594,13 @@ class SegmentTokenizer(object):
         # 2.7 CURE
         elif(self.cluster_mode == 'CURE'):
             print("Start Clustering for CURE...")
-            print("Parameters: ")
             number_cluster = v
-            print("number_cluster="+str(number_cluster))
             number_represent_points = 10
+            number_cluster = input("number_cluster=")
+            number_represent_points = input("number_present_points=")
+
+            print("Parameters: ")
+            print("number_cluster="+str(number_cluster))
             print("number_present_points="+str(number_represent_points))
 
             compression = 0.3
