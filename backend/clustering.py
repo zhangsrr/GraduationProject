@@ -395,6 +395,10 @@ def test_range():
 def test(arg):
     print(arg)
 
+def matrix_gpu():
+    X = readfile()
+
+
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:

@@ -524,16 +524,16 @@ class SegmentTokenizer(object):
             ms = MeanShift(bandwidth=bandwidth, bin_seeding=True)
             ms.fit(X)
             cluster_labels = ms.predict(X)
-            print(cluster_labels)
-            print(len(cluster_labels))
+            # print(cluster_labels)
+            # print(len(cluster_labels))
 
             cluster_centers = ms.cluster_centers_
-            print(cluster_centers)
-            print(len(cluster_centers))
+            # print(cluster_centers)
+            # print(len(cluster_centers))
 
             print("length of cluster_centers:")
             # print(cluster_centers)
-            print(len(cluster_centers))
+            # print(len(cluster_centers))
 
             # 1. Silhouette Coefficient
             # The score is higher when clusters are dense and well separated.
@@ -560,16 +560,16 @@ class SegmentTokenizer(object):
                                      damping=damping,
                                      preference=preference).fit(X)
             cluster_labels = ap_instance.fit_predict(X)
-            print(cluster_labels)
-            print(len(cluster_labels))
+            # print(cluster_labels)
+            # print(len(cluster_labels))
 
             cluster_centers = ap_instance.cluster_centers_
-            print(cluster_centers)
-            print(len(cluster_centers))
+            # print(cluster_centers)
+            # print(len(cluster_centers))
 
             print("length of cluster_centers:")
             # print(cluster_centers)
-            print(len(cluster_centers))
+            # print(len(cluster_centers))
 
             # 1. Silhouette Coefficient
             # The score is higher when clusters are dense and well separated.
@@ -606,14 +606,14 @@ class SegmentTokenizer(object):
             for idx in range(len(clusters)):
                 for pts in clusters[idx]:
                     cluster_labels[pts] = idx
-            print(cluster_labels)
-            print(len(cluster_labels))
+            # print(cluster_labels)
+            # print(len(cluster_labels))
             # 以label中每个簇最早出现的位置定为center的索引
             cluster_centers = []
             for idx in np.unique(cluster_labels):
                 pos = list(cluster_labels).index(idx)
                 cluster_centers.append(X[pos])
-            print("cluster_centers: ")
+            # print("cluster_centers: ")
             # print(cluster_centers)
             # print(len(cluster_centers))
 
