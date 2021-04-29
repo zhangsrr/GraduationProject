@@ -172,11 +172,11 @@ class SegmentTokenizer(object):
         :return:
         """
         length = len(self.streamlines_lines_index_data)
-        perc = [(length-1)//4*v for v in range(5)]
+        perc = [(length-1)//100*v for v in range(101)]
         # e.g. length=2001, then perc=[500*v for v in range(5)], that is perc=[0, 500, 1000, 1500, 2000]
         if line_index in perc:
             s_perc = "|"
-            s = "##########"
+            s = "#"
             s_perc += s * perc.index(line_index)  # s_perc = 几倍的s ##########
             print(s_perc, int(perc.index(line_index)/(len(perc)-1)*100), "%")
             # e.g. line_index = 1500
@@ -226,10 +226,10 @@ class SegmentTokenizer(object):
     def calculate_one_line_segments_vectors(self, line_index, dim):
         # 以下的7行代码在相同代码段已做解释
         length = len(self.streamlines_lines_index_data)
-        perc = [(length-1)//4*v for v in range(5)]
+        perc = [(length-1)//100*v for v in range(101)]
         if line_index in perc:
             s_perc = "|"
-            s = "##########"
+            s = "#"
             s_perc += s * perc.index(line_index)
             print(s_perc, int(perc.index(line_index)/(len(perc)-1)*100), "%")
 
@@ -711,7 +711,7 @@ class SegmentTokenizer(object):
         # 词向量表达就是矩阵乘法运算
         # ont-hot矩阵N*1，S矩阵N*N，词向量表达ret矩阵=S*one-hot=N*1矩阵，其实就是S中的某一行向量
         len_segment_vocabulary_index = len(self.segment_vocabularys_index.items())
-        process_bar = [len_segment_vocabulary_index//100 * i for i in range(101)]
+        process_bar = [(len_segment_vocabulary_index-1)//100 * i for i in range(101)]
         for index, streamline in self.segment_vocabularys_index.items():
             # segment_vocabularys_index.items()是[pts.x_pts.y_]这样的表达形式
             if index in process_bar:
