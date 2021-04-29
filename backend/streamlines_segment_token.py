@@ -274,24 +274,7 @@ class SegmentTokenizer(object):
             top = np.array([(data[i]+data[i-1])/2.0 for i in range(len(data))[1:]])  # i从1开始，range()[1:]，去除首项
             pyramid.append(top) #放入第k层
         # 最后得到的pyramid相当于原始流线分段n个点的多维point_feature的全部数据整合，有多层，最后一项是顶层数据
-        """
-        pyramid data: 
-        [[0.02024883 0.38287121 1.25724939 0.        ]
-         [0.02444911 0.05811907 1.255526   0.        ]
-         [0.02739758 0.18493743 1.25378871 0.        ]
-         [0.03576561 0.16550325 1.25202655 0.        ]
-         [0.05129829 0.06765268 1.25024731 0.        ]
-         [0.06468541 0.04450216 1.24843147 0.        ]
-         [0.073136   0.04595697 1.24656229 0.        ]
-         [0.08813662 0.05235368 1.24463737 0.        ]
-         [0.11345011 0.03221319 1.24267797 0.        ]
-         [0.13589151 0.01512622 1.24064795 0.        ]
-         [0.15023672 0.01289563 1.23855948 0.        ]
-         [0.18579385 0.01604874 1.236414   0.        ]
-         [0.1935932  0.01951918 1.23580314 0.        ]
-         [0.24255992 5.85920017 1.23270757 0.        ]]
-        len data: 14
-        """
+
         # 2.从树的根节点取dim维数据构成向量.
         segment_vector = []
         # n_features = len(pyramid[0][0]) #每个点的特征属性数量.
@@ -439,7 +422,7 @@ class SegmentTokenizer(object):
             print("Parameters: ")
             # eps保持不变，increase min_samples，
             # that will decrease the sizes of individual clusters and increase the number of clusters
-            eps = 0.2
+            eps = 0.4
             min_samples = 50  # double dataset dimensionality
             print("eps="+str(eps))
             print("min_samples="+str(min_samples))
