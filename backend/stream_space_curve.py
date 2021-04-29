@@ -1,7 +1,6 @@
 from functools import partial
 from typing import Set
 import numpy as np
-from scipy import stats
 from pyknotid.spacecurves.spacecurve import SpaceCurve
 
 
@@ -122,19 +121,6 @@ class StreamSpaceCurve(SpaceCurve):
         return regions
 
     def get_velocity_direction_entropy(self):
-        # NEIGHBORHOOD_RADIUS = 10
-        # region_counter = self.region_map.shape[1]
-        # regions = self.get_region()
-        # entropy_list = []
-        # for i in range(self.points.shape[0]):
-        #     neighbors = self.get_neighbors(regions, i, NEIGHBORHOOD_RADIUS)
-        #     distribution = np.bincount(neighbors)
-        #     missing_length = region_counter - distribution.shape[0]
-        #     padded_distribution = np.pad(distribution, (0, missing_length), 'constant', constant_values=0)
-        #     entropy_list.append(stats.entropy(padded_distribution))
-        #     # np.savetxt(str(Path(velocity_distribution_path, f'{i}.txt')), padded_distribution, fmt="%d")
-        # velocity_direction_entropy = np.array(entropy_list)
-        
         entropy_list = []
         for i in range(self.points.shape[0]):
             entropy_list.append(0)

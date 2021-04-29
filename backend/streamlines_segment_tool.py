@@ -6,7 +6,10 @@ import vtk
 import numpy as np
 from backend.dissimilarity import compute_dissimilarity
 from backend.streamlines_segment_token import SegmentTokenizer
+import pandas as pd
+import sys
 
+np.set_printoptions(threshold=sys.maxsize)
 
 class StreamlinesSegment(object):
     """
@@ -31,6 +34,15 @@ class StreamlinesSegment(object):
         self.mul_polydata_output = []               # 多组·筛选出的流线数据(vtkPolyData)
         self.mul_lines_count_output = []            # 多组·筛选出的流线数量
 
+        """
+        以下是补充的用于聚类分析的
+        三维的点用t-sne降维成二维点集，label不变
+        """
+        self.mul_streamlines_labels = []  # 多组·每条流线的分组标签
+        self.cluster_mode = None
+
+
+
     def __clear_all_data(self):
         """
         Clear data for all class member variables.
@@ -40,9 +52,12 @@ class StreamlinesSegment(object):
 
     def filter_streamlines(self, src_streamlines_filename,
                                  dest_streamlines_count_list,
-                                 dest_streamlines_filename_prefix):
+                                 dest_streamlines_filename_prefix,
+                                 cluster_mode):
         """
         Filtering streamlines.
+        调用此函数后可以得到经压缩的流线
+        之后再对此流线组进行聚类分析
         Parameters
         ----------
         src_streamlines_filename : str of objects
@@ -58,12 +73,13 @@ class StreamlinesSegment(object):
             the status of filtering streamlines.
         """
         # Load streamline file.
+        self.cluster_mode = cluster_mode
         print("Load streamline file...")
         self.__load_streamlines_data_from_vtk_file(src_streamlines_filename)  # 模板代码，读取vtk
         self.__extract_streamlines_info_from_polydata()  # 提取vtk的所有数据，顶点、流线等等
         # Filter streamline data.
         print("Filtering streamlines based on segment...")
-        self._filtering_streamlines_based_on_segment(dest_streamlines_count_list)
+        self._filtering_streamlines_based_on_segment(dest_streamlines_count_list, cluster_mode)
         # Save streamline data.
         print("Save streamline data...")
         self.__generate_result_polydata_to_memory()
@@ -73,34 +89,7 @@ class StreamlinesSegment(object):
         self.__clear_all_data()
         return True
 
-    def _filtering_streamlines_based_on_geometric_distance(self, dest_streamlines_count_list, single_thread=False, n_jobs=-1, verbose=True):
-        """
-        Filtering streamlines based on geometric distance.
-
-        :param dest_streamlines_count_list:
-        :param single_thread:
-        :param n_jobs:
-        :param verbose:
-        :return:
-        """
-        streamlines_lines_data = []
-        for line_index_list in self.streamlines_lines_index_data:
-            streamline_line_data = []
-            for point_index_list in line_index_list:
-                streamline_line_data.append(self.streamlines_vertexs_data[point_index_list])
-            streamlines_lines_data.append(streamline_line_data)
-        streamlines_lines_data = np.array(streamlines_lines_data)  # 流线的线数据包含选择的每条流线的每个点的下标
-
-        for cnt in dest_streamlines_count_list:
-            dissimilarity_matrix, prototype_index = compute_dissimilarity(
-                                                                    streamlines_lines_data,
-                                                                    num_prototypes=cnt,
-                                                                    verbose=verbose)
-            self.mul_dissimilarity_matrix.append(dissimilarity_matrix)
-            self.mul_prototype_index.append(prototype_index)
-            self.mul_lines_count_output.append(cnt)
-
-    def _filtering_streamlines_based_on_segment(self, dest_streamlines_count_list):
+    def _filtering_streamlines_based_on_segment(self, dest_streamlines_count_list, cluster_mode):
         """
         Filtering streamlines based on segment.
 
@@ -110,7 +99,7 @@ class StreamlinesSegment(object):
         t = SegmentTokenizer(self.streamlines_vertexs_data,
                                 self.streamlines_lines_index_data,
                                 self.streamlines_attributes_data, 
-                                cluster_mode="KMeans")
+                                cluster_mode=cluster_mode)
         t.prepare_for_comparison() 
         for cnt in dest_streamlines_count_list:
             # 基于distant_typeid=0（欧几里得距离）计算不相似度. d_E 0
@@ -129,6 +118,38 @@ class StreamlinesSegment(object):
             self.mul_dissimilarity_matrix.append(dissimilarity_matrix)
             self.mul_prototype_index.append(prototype_index)
             self.mul_lines_count_output.append(cnt)
+
+        # print(type(self.mul_dissimilarity_matrix))  # list
+        # print(self.mul_dissimilarity_matrix[0])  # a matrix
+        # print("len: " + str(len(self.mul_dissimilarity_matrix)))  # len: 5
+        #
+        # print(type(self.mul_prototype_index))  # list
+        # print(self.mul_prototype_index[0])  # selected streamlines indices  [0], len: 5
+        #
+        # print(type(self.mul_lines_count_output))  # list
+        # print(self.mul_lines_count_output[0])  # 1
+
+        # np.savetxt() can only save 1 or 2-dim data, higher dimensions need to be saved in np.save()
+        # """
+        # Traceback (most recent call last):
+        #   File "test.py", line 20, in <module>
+        #     cluster_mode)
+        #   File "/home/gp2021-zsr/gp/backend/streamlines_segment_tool.py", line 80, in filter_streamlines
+        #     self._filtering_streamlines_based_on_segment(dest_streamlines_count_list, cluster_mode)
+        #   File "/home/gp2021-zsr/gp/backend/streamlines_segment_tool.py", line 149, in _filtering_streamlines_based_on_segment
+        #     np.save(file='mul_dissimilarity_matrix0.npy')
+        #   File "<__array_function__ internals>", line 4, in save
+        # TypeError: _save_dispatcher() missing 1 required positional argument: 'arr'
+        # """
+        # np.savetxt("mul_dissimilarity_matrix0.txt", self.mul_dissimilarity_matrix[0],fmt='%f', delimiter=',')
+        # df = pd.DataFrame(data=self.mul_dissimilarity_matrix)
+        # df.to_csv('dissimilarity_matrix.csv', header=False, index=False)
+        #
+        # df2 = pd.DataFrame(data=self.mul_prototype_index)  # selected lines index
+        # df2.to_csv('prototype_index.csv', header=False, index=False)
+
+        # error: could not broadcast input array from shape (2080,1) into shape (2080)
+        # np.savetxt("mul_dissimilarity_matrix.txt", self.mul_dissimilarity_matrix, fmt='%f', delimiter=',')
 
     def __load_streamlines_data_from_vtk_file(self, vtk_format_filename):
         """
@@ -228,7 +249,7 @@ class StreamlinesSegment(object):
         :return:
         """
         for i in range(len(self.mul_polydata_output)):
-            vtk_format_filename = vtk_format_filename_bs + str(self.mul_lines_count_output[i]) + ".vtk"
+            vtk_format_filename = vtk_format_filename_bs + str(self.cluster_mode) + "_" + str(self.mul_lines_count_output[i]) + ".vtk"
             writer = vtk.vtkPolyDataWriter()
             writer.SetFileName(vtk_format_filename)
             writer.SetInputData(self.mul_polydata_output[i])
