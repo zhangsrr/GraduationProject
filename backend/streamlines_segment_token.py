@@ -716,7 +716,7 @@ class SegmentTokenizer(object):
             # segment_vocabularys_index.items()是[pts.x_pts.y_]这样的表达形式
             if index in process_bar:
                 s_perc = "|"
-                s = "##########"
+                s = "#"
                 s_perc += s * process_bar.index(index)  # s_perc = 几倍的s ##########
                 print(s_perc, int(process_bar.index(index) / (len(process_bar) - 1) * 100), "%")
 
