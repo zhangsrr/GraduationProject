@@ -10,16 +10,22 @@ step 1. 流线分段
 import numpy as np
 from backend.stream_space_curve import StreamSpaceCurve
 from backend.pca import pca
+from backend.clustering_validity_measurement import MyValidity
+
 from sklearn.cluster import KMeans, DBSCAN, OPTICS, MeanShift, AffinityPropagation, estimate_bandwidth
 from pyclustering.cluster.cure import cure
 from pyclustering.cluster.kmedoids import kmedoids
 from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
+
 from openensembles.validation import validation
 import scipy.spatial.distance as dist
 import pandas as pd
 from datetime import datetime
 
 import torch
+from torch import linalg as LA
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 sel_feature = [
     "curvature",  # 曲率
@@ -59,10 +65,10 @@ class SegmentTokenizer(object):
         self.unique_heat_vectors_dictionary = [] # 独热向量词典. one-hot 符合该特征，则值为1
         self.all_line_vocabulary_vectors = dict() # 流线的词向量.
         # 量化的聚类度量指标
-        self.silhouette_coefficient = .0
-        self.db_index = .0
-        self.hubert_gamma = .0
-        self.normalized_validity = .0
+        # self.silhouette_coefficient = .0
+        # self.db_index = .0
+        # self.hubert_gamma = .0
+        # self.normalized_validity = .0
 
     def prepare_for_comparison(self):
         """数据准备阶段：\n
@@ -133,22 +139,28 @@ class SegmentTokenizer(object):
 
     def __dissim(self, x, y, distant_typeid=0):
         distance = 0
+        x_tensor = torch.from_numpy(x).to(device)
+        y_tensor = torch.from_numpy(y).to(device)
         if distant_typeid == 0:  # 欧几里得距离.
-            distance = np.linalg.norm(x-y)
+            # distance = np.linalg.norm(x-y)
+            distance = LA.norm(x_tensor - y_tensor)
         elif distant_typeid == 1:  # 余弦距离.
-            distance = 1 - np.dot(x,y)/(np.linalg.norm(x)*np.linalg.norm(y))
+            # distance = 1 - np.dot(x,y)/(np.linalg.norm(x)*np.linalg.norm(y))
+            distance = 1 - torch.dot(x_tensor, y_tensor) / (LA.norm(x_tensor) * LA.norm(y_tensor)).cpu()
         elif distant_typeid == 2:  # 曼哈顿距离.
-            distance = np.linalg.norm(x-y,ord=1)
+            # distance = np.linalg.norm(x-y,ord=1)
+            distance = LA.norm(x_tensor-y_tensor, ord=1).cpu()
         elif distant_typeid == 3:  # 切比雪夫距离.
-            distance = np.linalg.norm(x-y,ord=np.inf)
+            # distance = np.linalg.norm(x-y,ord=np.inf)
+            distance = LA.norm(x_tensor-y_tensor, ord=float('inf')).cpu()
         elif distant_typeid == 4:  # 夹角余弦(Cosine).
-            distance = np.dot(x,y)/(np.linalg.norm(x)*(np.linalg.norm(y)))
+            # distance = np.dot(x,y)/(np.linalg.norm(x)*(np.linalg.norm(y)))
+            distance = (torch.dot(x_tensor, y_tensor)/(LA.norm(x_tensor)*LA.norm(y_tensor))).cpu()
         elif distant_typeid == 5:  # 汉明距离(Hamming distance).
             distance = np.shape(np.nonzero(x-y)[0])[0]
         elif distant_typeid == 6:  # 杰卡德相似系数(Jaccard similarity coefficient).
             distance = dist.pdist(np.array([x,y]),'jaccard')[0]
             # 以下待补充度量方法
-
         else:
             raise("[ERROR] Unkonw distant type id!")
         return distance
@@ -580,32 +592,40 @@ class SegmentTokenizer(object):
             print("Error Clustering Method...The Program Will Exit Soon...")
             exit(-1)
 
+        endtime = datetime.now()
+        print("Finish Clustering: " + str(endtime - starttime))
         # doing clustering, get cluster_labels and cluster_centers(some clustering algorithms)
         # doing metrics
+        endtime = datetime.now()
+        print("Start Calculating Clustering Validity Metrics: " + str(endtime-starttime))
         validity_instance = validation(data=X, labels=cluster_labels)
+        my_validity_test = MyValidity(data=X, labels=cluster_labels)
 
         # 1. Silhouette Coefficient
         # The score is higher when clusters are dense and well separated.
         # self.silhouette_coefficient = self.validity_measurement_silhouette(data=X, cluster_labels=cluster_labels)
-        sil_score = validity_instance.silhouette()
-        print("Silhouette Coefficient: " + str(sil_score))
+        endtime = datetime.now()
+        sil_score = my_validity_test.Silhouette_Coefficient()
+        # sil_score = validity_instance.silhouette()
+        print("Silhouette Coefficient: " + str(sil_score) + "... Time: " + str(endtime-starttime))
 
         # 2. Davies-Bouldin Index
         # Values closer to zero indicate a better partition.
         # self.db_index = self.validity_measurement_db_index(data=X, cluster_labels=cluster_labels)
-        db_index_score = validity_instance.Davies_Bouldin()
-        print("Davies-Bouldin Index: " + str(db_index_score))
+        endtime = datetime.now()
+        # db_index_score = validity_instance.Davies_Bouldin()
+        db_index_score = my_validity_test.Davies_Bouldin_Index()
+        print("Davies-Bouldin Index: " + str(db_index_score) + "... Time: " + str(endtime-starttime))
 
         # 3. Hubert's gamma statistics
         # hubert_gamma_score = validity_instance.Baker_Hubert_Gamma()
-        # print("Baker Hubert Gamma: " + str(hubert_gamma_score))
+        # endtime = datetime.now()        #
+        # print("Baker Hubert Gamma: " + str(hubert_gamma_score) + "... Time: " + str(endtime-starttime))
         #
         # # 4. Normalized validity measurement
         # modified_hubert_score = validity_instance.modified_hubert_t()
-        # print("Modified Hubert T statistic: " + str(modified_hubert_score))
-
-        endtime = datetime.now()
-        print("Finish Clustering: " + str(endtime - starttime))
+        # endtime = datetime.now()
+        # print("Modified Hubert T statistic: " + str(modified_hubert_score) + "... Time: " + str(endtime-starttime))
 
         self.dictionary = self.__vectors2words(cluster_centers)  # 词典
         print("\nlength of self.dictionary:")
@@ -676,9 +696,6 @@ class SegmentTokenizer(object):
         len_segment_vocabulary_index = len(self.segment_vocabularys_index.items())
         process_bar = [(len_segment_vocabulary_index-1)//25 * i for i in range(26)]
 
-        # using pytorch
-        device = torch.device('cuda')
-
         for index, streamline in self.segment_vocabularys_index.items():
             # segment_vocabularys_index.items()是index: [pts.x_pts.y_]……这样的表达形式
             if index in process_bar:
@@ -690,7 +707,7 @@ class SegmentTokenizer(object):
                 print(s_perc, int(process_bar.index(index) / (len(process_bar) - 1) * 100), "%")
 
             S = np.array([0 for k in range(v*v)])  # v行v列的矩阵
-            S_tensor = torch.FloatTensor(S)
+            S_tensor = torch.FloatTensor(S)  # because torch.mm() is not applicable for LongTensor
             S_tensor = S_tensor.to(device)
             for i in range(len(streamline)):
                 # print("i in range(len(streamline)): " + str(i))
