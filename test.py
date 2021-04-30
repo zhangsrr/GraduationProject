@@ -21,8 +21,15 @@ if __name__ == '__main__':
     if len(sys.argv) != 2:
         print("Error arguments input, should be python test.py cluster_mode")
         print("e.g. python test.py KMeans")
-        exit(-1)
-    cluster_mode = sys.argv[1]
+        print("Do you want to run by KMeans default?")
+        ans = input("yes or no:\n")
+        assert (ans == "yes" or ans == "no")
+        if ans == "yes":
+            cluster_mode = "KMeans"
+        else:
+            exit(-1)
+    else:
+        cluster_mode = sys.argv[1]
     assert (cluster_mode == "KMeans" or
             cluster_mode == "KMedoids" or
             cluster_mode == "DBSCAN" or
