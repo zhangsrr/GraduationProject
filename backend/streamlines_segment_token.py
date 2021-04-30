@@ -460,6 +460,7 @@ class SegmentTokenizer(object):
             # min_cluster_size = input("min_cluster_size= (MinPts for one cluster, better between 50 and 100)\n")
             min_cluster_size = 10  # 对于原始流场，这个参数应该要更大，50-100为佳
 
+            print("Parameters: ")
             print("xi="+str(xi))
             print("min_samples=" + str(min_samples))
             print("min_cluster_size="+str(min_cluster_size))
@@ -470,7 +471,6 @@ class SegmentTokenizer(object):
             max_eps = 1.
             # print("max_eps="+str(max_eps))
 
-            print("Parameters: ")
             opt_instance = OPTICS(min_samples=min_samples,
                                   xi=xi,
                                   min_cluster_size=min_cluster_size,

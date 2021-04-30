@@ -18,7 +18,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 class MyValidity():
     def __init__(self, data, labels):
         self.data_tensor = torch.from_numpy(data)
-        self.labels_tensor = torch.from_numpy(labels)
+        self.labels_tensor = torch.IntTensor(labels)
 
         self.data_tensor = self.data_tensor.to(device)  # 传送给gpu
         self.labels_tensor = self.labels_tensor.to(device)
