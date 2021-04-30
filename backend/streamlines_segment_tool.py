@@ -86,6 +86,7 @@ class StreamlinesSegment(object):
         # Clear all data.
         print("Clear all data...")
         self.__clear_all_data()
+        
         return True
 
     def _filtering_streamlines_based_on_segment(self, dest_streamlines_count_list, cluster_mode):

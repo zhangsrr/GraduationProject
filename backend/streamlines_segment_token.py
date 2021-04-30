@@ -27,15 +27,14 @@ from torch import linalg as LA
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+import backend.global_define as glo
+
 sel_feature = [
     "curvature",  # 曲率
     "torsion",  # 扭率
     "tortuosity",  # 弯曲度
     "velocity_direction_entropy"  # 速度方向熵，计算有问题，得到的值全是0
 ]
-
-starttime = datetime.now()
-endtime = datetime.now()
 
 class SegmentTokenizer(object):
     def __init__(self,
@@ -87,21 +86,20 @@ class SegmentTokenizer(object):
         # 计算流线分段的特征向量.
         self.calculate_all_segment_vectors(dim=12) #【注】此处的dim应该由外部主函数传入，暂时写为特定值. dim只能是len(sel_feature)的倍数
         # 基于流线分段的特征向量生成词汇. 用到聚类算法
-        global endtime
-        endtime = datetime.now()
-        print("Finish calculate all segment vectors: " + str(endtime-starttime))
+        glo.set_value('endtime', datetime.now())
+        print("Finish calculate all segment vectors: " + str(glo.time_pass()) + '\n')
         self.generate_vocabulary_based_on_streamline_segmentation(k=2, v=32)
 
         # 生成流线的词向量表达.
-        endtime = datetime.now()
-        print("Start generate streamline word vector: " + str(endtime - starttime))
+        glo.set_value('endtime', datetime.now())
+        print("Start generate streamline word vector: " + str(glo.time_pass()) + '\n')
         self.generate_streamlined_word_vector_expressions(v=32)
 
     def calculate_main_streamline_index(self, cnt, distant_typeid=0):
         """应用1：流场压缩(pca+聚类).
         """
-        global endtime
-        print("calculate_main_streamline_index ", cnt, " ..." + " Time: " + str(endtime-starttime))
+        glo.set_value('endtime', datetime.now())
+        print("calculate_main_streamline_index ", cnt, " ..." + " Time: " + str(glo.time_pass()))
         assert(0 <= cnt <= len(self.all_line_vocabulary_vectors))
         # 1.计算不相似度矩阵.
         dissimilarity_matrix = self.__calculate_dissimilarity_matrix(distant_typeid)
@@ -244,9 +242,8 @@ class SegmentTokenizer(object):
     def calculate_all_segment_vectors(self, dim=12):
         print("calculate_all_segment_vectors...")
         print("streamlines_lines_index_data =", len(self.streamlines_lines_index_data))  #len()是vtk文件流线总数
-        global endtime
-        endtime = datetime.now()
-        print("Start calculate all segment vectors: "+str(endtime-starttime))
+        glo.set_value('endtime', datetime.now())
+        print("Start calculate all segment vectors: "+str(glo.get_value('endtime')-glo.get_value('starttime')))
         for line_index in range(len(self.streamlines_lines_index_data)):
             self.calculate_one_line_segments_vectors(line_index, dim)
 
@@ -343,9 +340,8 @@ class SegmentTokenizer(object):
         # 1.pca主成分分析（降到k维）
         # print("self.segment_feature_vectors.items():")
         # print(self.segment_feature_vectors.items())
-        global endtime
-        endtime = datetime.now()
-        print("Start PCA reduce dimension: " + str(endtime-starttime))
+        glo.set_value('endtime', datetime.now())
+        print("Start PCA reduce dimension: " + str(glo.get_value('endtime')-glo.get_value('starttime')))
         for line,value in self.segment_feature_vectors.items():
             # print("line, value: " + str(line))
             # print(value)
@@ -364,8 +360,8 @@ class SegmentTokenizer(object):
         # streamlines_segment_token.py:210: ComplexWarning: Casting complex values to real discards the imaginary part
         #   for pt in value], dtype="float64")
         # 此时self.segment_feature_vectors_kdim都降成了k维，即pt均为k维
-        endtime = datetime.now()
-        print("Finish PCA reduce dimension and Start Clustering: " + str(endtime - starttime))
+        glo.set_value('endtime', datetime.now())
+        print("Finish PCA reduce dimension and Start Clustering: " + str(glo.time_pass()))
         X = np.array([pt for line, value in self.segment_feature_vectors_kdim.items() for pt in value], dtype="float64")  # 2668
 
         df = pd.DataFrame(X)
@@ -592,40 +588,42 @@ class SegmentTokenizer(object):
             print("Error Clustering Method...The Program Will Exit Soon...")
             exit(-1)
 
-        endtime = datetime.now()
-        print("Finish Clustering: " + str(endtime - starttime))
+        glo.set_value('endtime', datetime.now())
+        print("Finish Clustering: " + str(glo.time_pass()))
         # doing clustering, get cluster_labels and cluster_centers(some clustering algorithms)
         # doing metrics
-        endtime = datetime.now()
-        print("Start Calculating Clustering Validity Metrics: " + str(endtime-starttime))
+        glo.set_value('endtime', datetime.now())
+        print("Start Calculating Clustering Validity Metrics: " + str(glo.time_pass()))
         validity_instance = validation(data=X, labels=cluster_labels)
         my_validity_test = MyValidity(data=X, labels=cluster_labels)
 
         # 1. Silhouette Coefficient
         # The score is higher when clusters are dense and well separated.
         # self.silhouette_coefficient = self.validity_measurement_silhouette(data=X, cluster_labels=cluster_labels)
-        endtime = datetime.now()
+
+        glo.set_value('endtime', datetime.now())
         sil_score = my_validity_test.Silhouette_Coefficient()
         # sil_score = validity_instance.silhouette()
-        print("Silhouette Coefficient: " + str(sil_score) + "... Time: " + str(endtime-starttime))
+        print("Silhouette Coefficient: " + str(sil_score) + "... Time: " + str(glo.time_pass()))
 
         # 2. Davies-Bouldin Index
         # Values closer to zero indicate a better partition.
         # self.db_index = self.validity_measurement_db_index(data=X, cluster_labels=cluster_labels)
-        endtime = datetime.now()
+
+        glo.set_value('endtime', datetime.now())
         # db_index_score = validity_instance.Davies_Bouldin()
         db_index_score = my_validity_test.Davies_Bouldin_Index()
-        print("Davies-Bouldin Index: " + str(db_index_score) + "... Time: " + str(endtime-starttime))
+        print("Davies-Bouldin Index: " + str(db_index_score) + "... Time: " + str(glo.time_pass()))
 
         # 3. Hubert's gamma statistics
-        # hubert_gamma_score = validity_instance.Baker_Hubert_Gamma()
-        # endtime = datetime.now()        #
-        # print("Baker Hubert Gamma: " + str(hubert_gamma_score) + "... Time: " + str(endtime-starttime))
+        hubert_gamma_score = validity_instance.Baker_Hubert_Gamma()
+        glo.set_value('endtime', datetime.now())
+        print("Baker Hubert Gamma: " + str(hubert_gamma_score) + "... Time: " + str(glo.time_pass()))
         #
         # # 4. Normalized validity measurement
-        # modified_hubert_score = validity_instance.modified_hubert_t()
-        # endtime = datetime.now()
-        # print("Modified Hubert T statistic: " + str(modified_hubert_score) + "... Time: " + str(endtime-starttime))
+        modified_hubert_score = validity_instance.modified_hubert_t()
+        glo.set_value('endtime', datetime.now())
+        print("Modified Hubert T statistic: " + str(modified_hubert_score) + "... Time: " + str(glo.time_pass()))
 
         self.dictionary = self.__vectors2words(cluster_centers)  # 词典
         print("\nlength of self.dictionary:")
@@ -680,7 +678,6 @@ class SegmentTokenizer(object):
         :return:
         """
         print("generate_streamlined_word_vector_expressions...")
-        global endtime
         # consume time long, need a progress bar
 
         # 1.生成每个分段词汇的独特向量(独热向量的长度即为词汇集合的大小V).
@@ -699,8 +696,8 @@ class SegmentTokenizer(object):
         for index, streamline in self.segment_vocabularys_index.items():
             # segment_vocabularys_index.items()是index: [pts.x_pts.y_]……这样的表达形式
             if index in process_bar:
-                endtime = datetime.now()
-                print("Processing " + str(index) + " streamline... Time: " + str(endtime-starttime))
+                glo.set_value('endtime', datetime.now())
+                print("Processing " + str(index) + " streamline... Time: " + str(glo.time_pass()))
                 s_perc = "|"
                 s = "##"
                 s_perc += s * process_bar.index(index)  # s_perc = 几倍的s ##########
