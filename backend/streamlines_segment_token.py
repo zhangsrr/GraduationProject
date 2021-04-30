@@ -15,7 +15,7 @@ from pyclustering.cluster.cure import cure
 from pyclustering.cluster.kmedoids import kmedoids
 from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
 from sklearn import metrics
-
+from openensembles.validation import validation
 import scipy.spatial.distance as dist
 import pandas as pd
 from datetime import datetime
@@ -91,9 +91,10 @@ class SegmentTokenizer(object):
         self.generate_streamlined_word_vector_expressions(v=32)
 
     def calculate_main_streamline_index(self, cnt, distant_typeid=0):
-        """应用1：流场压缩(pca+kmeans).
+        """应用1：流场压缩(pca+聚类).
         """
-        print("calculate_main_streamline_index ", cnt, " ...")
+        global endtime
+        print("calculate_main_streamline_index ", cnt, " ..." + " Time: " + str(endtime-starttime))
         assert(0 <= cnt <= len(self.all_line_vocabulary_vectors))
         # 1.计算不相似度矩阵.
         dissimilarity_matrix = self.__calculate_dissimilarity_matrix(distant_typeid)
@@ -368,17 +369,7 @@ class SegmentTokenizer(object):
             # print(len(cluster_labels))  # 2668
 
             cluster_centers = km.cluster_centers_  # 每个簇的中心点坐标
-            print("length of cluster_centers:")
-            # print(cluster_centers)
-            print(len(cluster_centers))
-
-            # 1. Silhouette Coefficient
-            # The score is higher when clusters are dense and well separated.
-            self.silhouette_coefficient = self.validity_measurement_silhouette(data=X, cluster_labels=cluster_labels)
-
-            # 2. Davies-Bouldin Index
-            # Values closer to zero indicate a better partition.
-            self.db_index = self.validity_measurement_db_index(data=X, cluster_labels=cluster_labels)
+            print("number of clusters:" + str(len(np.unique(cluster_labels))))
 
         # 以下为补充的聚类方法（6种）
 
@@ -399,19 +390,12 @@ class SegmentTokenizer(object):
             cluster_centers = []
             for idx in cluster_medoids:
                 cluster_centers.append(X[idx])
-            print(cluster_centers)
-            print(len(cluster_centers))
+            # print(cluster_centers)
+            # print(len(cluster_centers))
 
             cluster_labels = kmedoids_instance.predict(X)
-            print(cluster_labels)
-            print(len(cluster_labels))
-            # 1. Silhouette Coefficient
-            # The score is higher when clusters are dense and well separated.
-            self.silhouette_coefficient = self.validity_measurement_silhouette(data=X, cluster_labels=cluster_labels)
-
-            # 2. Davies-Bouldin Index
-            # Values closer to zero indicate a better partition.
-            self.db_index = self.validity_measurement_db_index(data=X, cluster_labels=cluster_labels)
+            # print(cluster_labels)
+            print("number of clusters:" + str(len(np.unique(cluster_labels))))
 
         # 2.3 DBSCAN ok
         elif(self.cluster_mode == 'DBSCAN'):
@@ -422,10 +406,10 @@ class SegmentTokenizer(object):
             print("Parameters: ")
             # eps保持不变，increase min_samples，
             # that will decrease the sizes of individual clusters and increase the number of clusters
-            eps = input("eps= (usually between 0 and 1, float)\n")
-            # eps = 0.4
-            min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
-            # min_samples = 50  # double dataset dimensionality
+            # eps = input("eps= (usually between 0 and 1, float)\n")
+            eps = 0.4
+            # min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
+            min_samples = 10  # double dataset dimensionality
             print("eps="+str(eps))
             print("min_samples="+str(min_samples))
             db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
@@ -448,19 +432,9 @@ class SegmentTokenizer(object):
             for idx in __cluster_centers_idx:
                 pts = X[idx]
                 cluster_centers.append(pts)
-            print("length of cluster_centers:")
-            # print(cluster_centers)
-            print(len(cluster_centers))
+            print("number of clusters (removed noise):" + str(len(np.unique(cluster_labels)) - 1))
 
-            # 1. Silhouette Coefficient
-            # The score is higher when clusters are dense and well separated.
-            self.silhouette_coefficient = self.validity_measurement_silhouette(data=X, cluster_labels=cluster_labels)
-
-            # 2. Davies-Bouldin Index
-            # Values closer to zero indicate a better partition.
-            self.db_index = self.validity_measurement_db_index(data=X, cluster_labels=cluster_labels)
-
-            # DBSCAN得到的labels为-1的点应该要从X中去除，那么数据长度就会发生变化，对不上dictionary
+            # Question: DBSCAN得到的labels为-1的点应该要从X中去除，那么数据长度就会发生变化，可能对不上dictionary
 
         # 2.4 OPTICS ok 但聚类效果不好
         elif(self.cluster_mode == 'OPTICS'):
@@ -468,14 +442,14 @@ class SegmentTokenizer(object):
             # min_samples=8, xi=0.15, min_cluster_size=10 这样的参数设置对于原始流场来说，产生的簇太多了，有835个，sil_co分数为负
 
             # 一个点要想成为核心点，与其本身距离不大于epsilon的点的数目至少有min_samples个
-            min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
-            # min_samples = 25  # 对于原始流场，这个参数应该要更大，试试25-50
+            # min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
+            min_samples = 10  # 对于原始流场，这个参数应该要更大，试试25-50
 
             xi = .15 # higher, less clusters
 
             # 一个簇至少包含的点数目
-            min_cluster_size = input("min_cluster_size= (MinPts for one cluster, better between 50 and 100)\n")
-            # min_cluster_size = 50  # 对于原始流场，这个参数应该要更大，50-100为佳
+            # min_cluster_size = input("min_cluster_size= (MinPts for one cluster, better between 50 and 100)\n")
+            min_cluster_size = 10  # 对于原始流场，这个参数应该要更大，50-100为佳
 
             print("xi="+str(xi))
             print("min_samples=" + str(min_samples))
@@ -505,25 +479,15 @@ class SegmentTokenizer(object):
                 pts = X[idx]
                 cluster_centers.append(pts)
 
-            print("length of cluster_centers:")
-            # print(cluster_centers)
-            print(len(cluster_centers))
-
-            # 1. Silhouette Coefficient
-            # The score is higher when clusters are dense and well separated.
-            self.silhouette_coefficient = self.validity_measurement_silhouette(data=X, cluster_labels=cluster_labels)
-
-            # 2. Davies-Bouldin Index
-            # Values closer to zero indicate a better partition.
-            self.db_index = self.validity_measurement_db_index(data=X, cluster_labels=cluster_labels)
+            print("number of clusters (removed noise):" + str(len(np.unique(cluster_labels)) - 1))
 
         # 2.5 MeanShift ok
         elif (self.cluster_mode == 'MeanShift'):
             print("Start Clustering for MeanShift...")
             # time-complexity O(n^2), n is the number of points
             print("Parameters for estimating bandwidth: ")
-            # quantile = 0.4
-            quantile = input("quantile= (range from 0 to 1, float)\n")
+            quantile = 0.4
+            # quantile = input("quantile= (range from 0 to 1, float)\n")
             print("quantile="+str(quantile))
             bandwidth = estimate_bandwidth(X, quantile=quantile)
             print("Parameters for Meanshift: ")
@@ -538,29 +502,19 @@ class SegmentTokenizer(object):
             # print(cluster_centers)
             # print(len(cluster_centers))
 
-            print("length of cluster_centers:")
-            # print(cluster_centers)
-            # print(len(cluster_centers))
-
-            # 1. Silhouette Coefficient
-            # The score is higher when clusters are dense and well separated.
-            self.silhouette_coefficient = self.validity_measurement_silhouette(data=X, cluster_labels=cluster_labels)
-
-            # 2. Davies-Bouldin Index
-            # Values closer to zero indicate a better partition.
-            self.db_index = self.validity_measurement_db_index(data=X, cluster_labels=cluster_labels)
+            print("number of clusters:" + str(len(np.unique(cluster_labels))))
 
         # 2.6 AP ok
         elif(self.cluster_mode == 'AffinityPropagation' or self.cluster_mode == 'AP'):
             print("Start Clustering for AffinityPropagation...")
             print("Parameters: ")
             damping = 0.85
-            preference = -1000  # smaller, clusters less
+            preference = -500  # smaller, clusters less
             max_iter = 2000
 
-            damping = input("damping= (range from 0 to 1, float)\n")
-            preference = input("preference= (can be negative)\n")
-            max_iter = input("max_iter=")
+            # damping = input("damping= (range from 0 to 1, float)\n")
+            # preference = input("preference= (can be negative)\n")
+            # max_iter = input("max_iter=")
 
             print("damping=" + str(damping))
             print("preference="+str(preference))
@@ -579,25 +533,15 @@ class SegmentTokenizer(object):
             # print(cluster_centers)
             # print(len(cluster_centers))
 
-            print("length of cluster_centers:")
-            # print(cluster_centers)
-            # print(len(cluster_centers))
-
-            # 1. Silhouette Coefficient
-            # The score is higher when clusters are dense and well separated.
-            self.silhouette_coefficient = self.validity_measurement_silhouette(data=X, cluster_labels=cluster_labels)
-
-            # 2. Davies-Bouldin Index
-            # Values closer to zero indicate a better partition.
-            self.db_index = self.validity_measurement_db_index(data=X, cluster_labels=cluster_labels)
+            print("number of clusters:" + str(len(np.unique(cluster_labels))))
 
         # 2.7 CURE
         elif(self.cluster_mode == 'CURE'):
             print("Start Clustering for CURE...")
             number_cluster = v
             number_represent_points = 10
-            number_cluster = input("number_cluster=")
-            number_represent_points = input("number_present_points=")
+            # number_cluster = input("number_cluster=")
+            # number_represent_points = input("number_present_points=")
 
             print("Parameters: ")
             print("number_cluster="+str(number_cluster))
@@ -628,17 +572,8 @@ class SegmentTokenizer(object):
             for idx in np.unique(cluster_labels):
                 pos = list(cluster_labels).index(idx)
                 cluster_centers.append(X[pos])
-            # print("cluster_centers: ")
-            # print(cluster_centers)
-            # print(len(cluster_centers))
 
-            # 1. Silhouette Coefficient
-            # The score is higher when clusters are dense and well separated.
-            self.silhouette_coefficient = self.validity_measurement_silhouette(data=X, cluster_labels=cluster_labels)
-
-            # 2. Davies-Bouldin Index
-            # Values closer to zero indicate a better partition.
-            self.db_index = self.validity_measurement_db_index(data=X, cluster_labels=cluster_labels)
+            print("number of clusters:" + str(len(np.unique(cluster_labels))))
 
         else:
             print("Error Clustering Method...The Program Will Exit Soon...")
@@ -646,19 +581,28 @@ class SegmentTokenizer(object):
 
         # doing clustering, get cluster_labels and cluster_centers(some clustering algorithms)
         # doing metrics
+        validity_instance = validation(data=X, labels=cluster_labels)
+
         # 1. Silhouette Coefficient
         # The score is higher when clusters are dense and well separated.
         # self.silhouette_coefficient = self.validity_measurement_silhouette(data=X, cluster_labels=cluster_labels)
+        sil_score = validity_instance.silhouette()
+        print("Silhouette Coefficient: " + str(sil_score))
 
         # 2. Davies-Bouldin Index
         # Values closer to zero indicate a better partition.
         # self.db_index = self.validity_measurement_db_index(data=X, cluster_labels=cluster_labels)
+        db_index_score = validity_instance.Davies_Bouldin()
+        print("Davies-Bouldin Index: " + str(db_index_score))
 
         # 3. Hubert's gamma statistics
-        # empty
+        hubert_gamma_score = validity_instance.Baker_Hubert_Gamma()
+        print("Baker Hubert Gamma: " + str(hubert_gamma_score))
 
         # 4. Normalized validity measurement
-        # empty
+        modified_hubert_score = validity_instance.modified_hubert_t()
+        print("Modified Hubert T statistic: " + str(modified_hubert_score))
+
         endtime = datetime.now()
         print("Finish Clustering: " + str(endtime - starttime))
 
@@ -756,21 +700,4 @@ class SegmentTokenizer(object):
                         w = abs(da-db)/l
                         S = S + np.array(e*w).flatten()
             self.all_line_vocabulary_vectors[index] = S
-
-    def validity_measurement_silhouette(self, data, cluster_labels):
-        sil_score = metrics.silhouette_score(data, cluster_labels, metric='euclidean')
-        print("Silhouette Coefficient: " + str(sil_score))
-        return sil_score
-
-    def validity_measurement_db_index(self, data, cluster_labels):
-        db_index = metrics.davies_bouldin_score(data, cluster_labels)
-        print("Davies-Bouldin Index: " + str(db_index))
-        return db_index
-
-    def validity_measurement_hubert_gamma(self, data, cluster_labels):
-        hubert_gamma = .0
-
-    def validity_measurement_normalized(self, data, cluster_labels):
-        normalized_validity = .0
-
 
