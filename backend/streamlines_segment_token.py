@@ -14,7 +14,6 @@ from sklearn.cluster import KMeans, DBSCAN, OPTICS, MeanShift, AffinityPropagati
 from pyclustering.cluster.cure import cure
 from pyclustering.cluster.kmedoids import kmedoids
 from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
-from sklearn import metrics
 from openensembles.validation import validation
 import scipy.spatial.distance as dist
 import pandas as pd
@@ -535,7 +534,7 @@ class SegmentTokenizer(object):
 
             print("number of clusters:" + str(len(np.unique(cluster_labels))))
 
-        # 2.7 CURE
+        # 2.7 CURE ok
         elif(self.cluster_mode == 'CURE'):
             print("Start Clustering for CURE...")
             number_cluster = v
@@ -675,19 +674,19 @@ class SegmentTokenizer(object):
         len_segment_vocabulary_index = len(self.segment_vocabularys_index.items())
         process_bar = [(len_segment_vocabulary_index-1)//25 * i for i in range(26)]
         for index, streamline in self.segment_vocabularys_index.items():
-            # segment_vocabularys_index.items()是[pts.x_pts.y_]这样的表达形式
+            # segment_vocabularys_index.items()是index: [pts.x_pts.y_]……这样的表达形式
             if index in process_bar:
                 endtime = datetime.now()
-                print("Processing " + str(index) + " streamline: " + str(endtime-starttime))
+                print("Processing " + str(index) + " streamline... Time: " + str(endtime-starttime))
                 s_perc = "|"
                 s = "##"
                 s_perc += s * process_bar.index(index)  # s_perc = 几倍的s ##########
                 print(s_perc, int(process_bar.index(index) / (len(process_bar) - 1) * 100), "%")
 
-            S = np.array([0 for k in range(v*v)])
+            S = np.array([0 for k in range(v*v)])  # v行v列的矩阵
             for i in range(len(streamline)):
                 # print("i in range(len(streamline)): " + str(i))
-                oa = self.unique_heat_vectors_dictionary[self.segment_vocabularys_index[index][i]]
+                oa = self.unique_heat_vectors_dictionary[self.segment_vocabularys_index[index][i]]  # index号流线，第i号点
                 da = self.all_line_segment_arc_lengths[index][i]
                 l  = self.all_line_lengths[index]
                 # if l == 0:l=1 # 处理除数为0的特殊情况.
@@ -696,8 +695,19 @@ class SegmentTokenizer(object):
                     if i != j:
                         ob = self.unique_heat_vectors_dictionary[self.segment_vocabularys_index[index][j]]
                         db = self.all_line_segment_arc_lengths[index][j]
-                        e = np.mat(oa).T * np.mat(ob)
+                        print("value of ob:")
+                        print(ob)
+                        print("value of db:")
+                        print(db)
+                        e = np.mat(oa).T * np.mat(ob)  # 矩阵乘法
+                        print("len of e: " + str(len(e)))
+                        print("value of e: ")
+                        print(e)
                         w = abs(da-db)/l
-                        S = S + np.array(e*w).flatten()
+                        print("value of w: " + str(w))
+                        S = S + np.array(e*w).flatten()  # flatten折叠成一维数组
+                        print("value of S:")
+                        print(S)
+                        print("type of S: " + str(type(S)))
             self.all_line_vocabulary_vectors[index] = S
 
