@@ -4,7 +4,7 @@
 import torch
 import time
 import numpy as np
-
+import random
 def test_one():
     print(torch.__version__)  # 返回pytorch的版本
     print(torch.cuda.is_available())  # 当CUDA可用时返回True
@@ -49,6 +49,7 @@ def test_two():
     print(type(tat))
     tb = tb.to(device)
     S = torch.mm(tat, tb)
+    print("S shape: " + str(S.shape))
     t1 = time.time()  # 记录时间
     print(tat.device, t1 - t0, S.norm(2))  # c.norm(2)表示矩阵c的二范数
 
@@ -59,9 +60,49 @@ def test_two():
     # t1 = time.time()  # 记录时间
     # print(tat.device, t1 - t0, S.norm(2))  # c.norm(2)表示矩阵c的二范数
 
+def test_three():
+    # using pytorch
+    device = torch.device('cuda')
+    v = 32
+    S = np.array([0 for k in range(v * v)])  # v行v列的矩阵
+    S_tensor = torch.FloatTensor(S)
+    S_tensor = S_tensor.to(device)
+    oa = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ob = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    oa_tensor = torch.FloatTensor(oa)
+    oa_tensor = torch.unsqueeze(oa_tensor, 0)
+    oa_tensor_trans = oa_tensor.t()
+    oa_tensor_trans = oa_tensor_trans.to(device)  # 传送给gpu
+
+    ob_tensor = torch.FloatTensor(ob)
+    ob_tensor = torch.unsqueeze(ob_tensor, 0)
+    ob_tensor = ob_tensor.to(device)
+
+    for i in range(2):
+        e = torch.mm(oa_tensor_trans, ob_tensor)
+        print(type(e))
+        e = e.to(device)
+        # e = np.mat(oa).T * np.mat(ob)
+        print("value of e:")
+        print(e)
+        da = random.uniform(0,1)
+        db = random.uniform(0,1)
+        l = random.uniform(2,3)
+        print("\nda="+str(da)+" , db="+str(db))
+        w = abs(da-db)/l
+        print("\nw="+str(w))
+        S_tensor = S_tensor + torch.flatten(e*w)
+
+        # S = S + np.array(e * w).flatten()  # flatten折叠成一维数组
+        print("\nvalue of S:")
+        print(S)
+        print("\ntype of S: " + str(type(S)))
+        print("\nsize of S: " + str(S.size))
+
 
 if __name__ == '__main__':
     torch.cuda.set_device(1)
-    test_one()
-    test_two()
+    # test_one()
+    # test_two()
+    test_three()
 

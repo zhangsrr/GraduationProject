@@ -3,6 +3,7 @@ test streamlines_segment
 """
 from backend.streamlines_segment_tool import *
 import sys
+import torch
 
 if __name__ == '__main__':
     vtk_name = 'tec025.5044_00_type00_streamlines_40_both'
@@ -30,6 +31,7 @@ if __name__ == '__main__':
             cluster_mode == "AP" or
             cluster_mode == "AffinityPropagation" or
             cluster_mode == "CURE")
+    torch.cuda.set_device(1)
     obj.filter_streamlines(src_streamlines_filename,
                            dest_streamlines_count_list,
                            dest_streamlines_filename_prefix,

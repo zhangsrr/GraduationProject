@@ -19,6 +19,8 @@ import scipy.spatial.distance as dist
 import pandas as pd
 from datetime import datetime
 
+import torch
+
 sel_feature = [
     "curvature",  # 曲率
     "torsion",  # 扭率
@@ -595,12 +597,12 @@ class SegmentTokenizer(object):
         print("Davies-Bouldin Index: " + str(db_index_score))
 
         # 3. Hubert's gamma statistics
-        hubert_gamma_score = validity_instance.Baker_Hubert_Gamma()
-        print("Baker Hubert Gamma: " + str(hubert_gamma_score))
-
-        # 4. Normalized validity measurement
-        modified_hubert_score = validity_instance.modified_hubert_t()
-        print("Modified Hubert T statistic: " + str(modified_hubert_score))
+        # hubert_gamma_score = validity_instance.Baker_Hubert_Gamma()
+        # print("Baker Hubert Gamma: " + str(hubert_gamma_score))
+        #
+        # # 4. Normalized validity measurement
+        # modified_hubert_score = validity_instance.modified_hubert_t()
+        # print("Modified Hubert T statistic: " + str(modified_hubert_score))
 
         endtime = datetime.now()
         print("Finish Clustering: " + str(endtime - starttime))
@@ -673,6 +675,10 @@ class SegmentTokenizer(object):
         # ont-hot矩阵N*1，S矩阵N*N，词向量表达ret矩阵=S*one-hot=N*1矩阵，其实就是S中的某一行向量
         len_segment_vocabulary_index = len(self.segment_vocabularys_index.items())
         process_bar = [(len_segment_vocabulary_index-1)//25 * i for i in range(26)]
+
+        # using pytorch
+        device = torch.device('cuda')
+
         for index, streamline in self.segment_vocabularys_index.items():
             # segment_vocabularys_index.items()是index: [pts.x_pts.y_]……这样的表达形式
             if index in process_bar:
@@ -684,9 +690,20 @@ class SegmentTokenizer(object):
                 print(s_perc, int(process_bar.index(index) / (len(process_bar) - 1) * 100), "%")
 
             S = np.array([0 for k in range(v*v)])  # v行v列的矩阵
+            S_tensor = torch.FloatTensor(S)
+            S_tensor = S_tensor.to(device)
             for i in range(len(streamline)):
                 # print("i in range(len(streamline)): " + str(i))
                 oa = self.unique_heat_vectors_dictionary[self.segment_vocabularys_index[index][i]]  # index号流线，第i号点
+                # print("oa_size="+str(len(oa)))
+                # print("oa:")
+                # print(oa)
+                oa_tensor = torch.FloatTensor(oa)
+                oa_tensor = torch.unsqueeze(oa_tensor, 0)  # 从向量到矩阵
+                oa_tensor_trans = oa_tensor.t()  # 矩阵转置
+                oa_tensor_trans = oa_tensor_trans.to(device)  # 传送给gpu
+                # print("oa_tensor_trans_shape: "+str(oa_tensor_trans.shape))  # [32]
+
                 da = self.all_line_segment_arc_lengths[index][i]
                 l  = self.all_line_lengths[index]
                 # if l == 0:l=1 # 处理除数为0的特殊情况.
@@ -694,20 +711,28 @@ class SegmentTokenizer(object):
                 for j in range(len(streamline)):
                     if i != j:
                         ob = self.unique_heat_vectors_dictionary[self.segment_vocabularys_index[index][j]]
+                        # print("ob_size=" + str(len(ob)))
+                        # print("ob:")
+                        # print(ob)
+                        ob_tensor = torch.FloatTensor(ob)
+                        ob_tensor = torch.unsqueeze(ob_tensor, 0)
+                        ob_tensor = ob_tensor.to(device)
+                        # print("ob_tensor_shape: " + str(ob_tensor.shape))  # [32]
+
                         db = self.all_line_segment_arc_lengths[index][j]
-                        print("value of ob:")
-                        print(ob)
-                        print("value of db:")
-                        print(db)
-                        e = np.mat(oa).T * np.mat(ob)  # 矩阵乘法
-                        print("len of e: " + str(len(e)))
-                        print("value of e: ")
-                        print(e)
+
+                        e = torch.mm(oa_tensor_trans, ob_tensor)
+                        e = e.to(device)
+
+                        # print("len of e: " + str(len(e)))
+                        # print("value of e: ")
+                        # print(e)
                         w = abs(da-db)/l
-                        print("value of w: " + str(w))
-                        S = S + np.array(e*w).flatten()  # flatten折叠成一维数组
-                        print("value of S:")
-                        print(S)
-                        print("type of S: " + str(type(S)))
+                        # print("value of w: " + str(w))
+                        S_tensor = S_tensor + torch.flatten(e*w)
+                        # print("value of S:")
+                        # print(S)
+                        # print("type of S: " + str(type(S)))
+            S = S_tensor.to('cpu').numpy()
             self.all_line_vocabulary_vectors[index] = S
 
