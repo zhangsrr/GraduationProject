@@ -418,7 +418,7 @@ class SegmentTokenizer(object):
             # eps = input("eps= (usually between 0 and 1, float)\n")
             eps = 0.4
             # min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
-            min_samples = 10  # double dataset dimensionality
+            min_samples = 20  # double dataset dimensionality
             print("eps="+str(eps))
             print("min_samples="+str(min_samples))
             db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
@@ -452,13 +452,13 @@ class SegmentTokenizer(object):
 
             # 一个点要想成为核心点，与其本身距离不大于epsilon的点的数目至少有min_samples个
             # min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
-            min_samples = 10  # 对于原始流场，这个参数应该要更大，试试25-50
+            min_samples = 15  # 对于原始流场，这个参数应该要更大，试试25-50
 
             xi = .15 # higher, less clusters
 
             # 一个簇至少包含的点数目
             # min_cluster_size = input("min_cluster_size= (MinPts for one cluster, better between 50 and 100)\n")
-            min_cluster_size = 10  # 对于原始流场，这个参数应该要更大，50-100为佳
+            min_cluster_size = 20  # 对于原始流场，这个参数应该要更大，50-100为佳
 
             print("Parameters: ")
             print("xi="+str(xi))
@@ -500,8 +500,8 @@ class SegmentTokenizer(object):
             print("quantile="+str(quantile))
             bandwidth = estimate_bandwidth(X, quantile=quantile)
             print("Parameters for Meanshift: ")
-            print("bandwidth="+str(bandwidth))
-            ms = MeanShift(bandwidth=bandwidth, bin_seeding=True)
+            print("bandwidth="+str(bandwidth*2))
+            ms = MeanShift(bandwidth=bandwidth*2, bin_seeding=True)
             ms.fit(X)
             cluster_labels = ms.predict(X)
             # print(cluster_labels)
@@ -518,7 +518,7 @@ class SegmentTokenizer(object):
             print("Start Clustering for AffinityPropagation...")
             print("Parameters: ")
             damping = 0.85
-            preference = -500  # smaller, clusters less
+            preference = -1000  # smaller, clusters less
             max_iter = 2000
 
             # damping = input("damping= (range from 0 to 1, float)\n")
