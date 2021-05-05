@@ -11,7 +11,8 @@ import numpy as np
 from backend.stream_space_curve import StreamSpaceCurve
 from backend.pca import pca
 from backend.clustering_validity_measurement import MyValidity
-from backend.helper_function import output_time
+from backend.clustering_validity import clustering_validity_analysis
+from backend.helper_function import output_time, compute_euclidean
 
 from sklearn.cluster import KMeans, DBSCAN, OPTICS, MeanShift, AffinityPropagation, estimate_bandwidth
 from pyclustering.cluster.cure import cure
@@ -24,14 +25,13 @@ import pandas as pd
 
 
 import torch
-from torch_cluster import knn
 from torch import linalg as LA
 from sklearn.neighbors import NearestNeighbors  # for computing epsilon, but time consuming large
-
-# if torch.cuda.is_available():
-from torch import cdist
+from tqdm import tqdm
 
 import matplotlib.pyplot as plt
+import sys
+np.set_printoptions(threshold=sys.maxsize)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -85,7 +85,7 @@ class SegmentTokenizer(object):
         """
         if self.cluster_mode is None:
             raise("The cluster mode is None.")
-        self.test_torch()
+        # self.test_torch()
         # 计算流线各点的特征值.
         self.get_all_point_features_from_line()
         # 根据特征值对流线进行分段. sel_feature[0]曲率，分段只能依靠一个特征值进行分段？
@@ -93,7 +93,7 @@ class SegmentTokenizer(object):
         # 计算流线分段的特征向量.
         self.calculate_all_segment_vectors(dim=12) #【注】此处的dim应该由外部主函数传入，暂时写为特定值. dim只能是len(sel_feature)的倍数
         # 基于流线分段的特征向量生成词汇. 用到聚类算法
-        print("Finish calculate all segment vectors: " + output_time() + '\n')
+        # print("Finish calculate all segment vectors: " + output_time() + '\n')
         self.generate_vocabulary_based_on_streamline_segmentation(k=2, v=32)
 
         # 生成流线的词向量表达.
@@ -106,6 +106,7 @@ class SegmentTokenizer(object):
         print("calculate_main_streamline_index ", cnt, " ..." + " Time: " + output_time())
         assert(0 <= cnt <= len(self.all_line_vocabulary_vectors))
         # 1.计算不相似度矩阵.
+        print("calculate dissimilarity matrix...")
         dissimilarity_matrix = self.__calculate_dissimilarity_matrix(distant_typeid)
         # 2.筛选cnt条最不相似的流线.
         S = []
@@ -132,7 +133,7 @@ class SegmentTokenizer(object):
 
     def __calculate_dissimilarity_matrix(self, distant_typeid=0):
         dissimilarity_matrix = []
-        for index_x, vocabulary_x in self.all_line_vocabulary_vectors.items():
+        for index_x, vocabulary_x in tqdm(self.all_line_vocabulary_vectors.items()):
             row_data = []
             for index_y, vocabulary_y in self.all_line_vocabulary_vectors.items():
                 row_data.append(self.__dissim(np.array(vocabulary_x), np.array(vocabulary_y), distant_typeid))
@@ -168,8 +169,8 @@ class SegmentTokenizer(object):
         return distance
 
     def get_all_point_features_from_line(self):
-        print("get_all_point_features_from_line...")
-        for line_index in range(len(self.streamlines_lines_index_data)):
+        print("\nget_all_point_features_from_line...")
+        for line_index in tqdm(range(len(self.streamlines_lines_index_data))):
             self.get_point_features_from_line(line_index)
 
     def get_point_features_from_line(self, line_index: int):
@@ -185,9 +186,9 @@ class SegmentTokenizer(object):
         self.all_line_arc_lengths[line_index] = curve.get_arc_length_matrix_array()
 
     def segment_all_lines(self, sel_feature=sel_feature[0], n_segment=50):
-        print("segment_all_lines...")
+        print("\nsegment_all_lines...")
         print("streamlines_lines_index_data =", len(self.streamlines_lines_index_data))
-        for line_index in range(len(self.streamlines_lines_index_data)):
+        for line_index in tqdm(range(len(self.streamlines_lines_index_data))):
             self.segment_one_line(line_index, sel_feature, n_segment)
 
     def segment_one_line(self, line_index: int, sel_feat, n_segment):
@@ -197,16 +198,18 @@ class SegmentTokenizer(object):
         :param n_segment: 最大分段数
         :return:
         """
-        length = len(self.streamlines_lines_index_data)
-        perc = [(length-1)//10*v for v in range(11)]
+        # 进度条用tqdm实现了
+        # length = len(self.streamlines_lines_index_data)
+        # perc = [(length-1)//10*v for v in range(11)]
         # e.g. length=2001, then perc=[500*v for v in range(5)], that is perc=[0, 500, 1000, 1500, 2000]
-        if line_index in perc:
-            s_perc = "|"
-            s = "#####"
-            s_perc += s * perc.index(line_index)  # s_perc = 几倍的s ##########
-            print(s_perc, int(perc.index(line_index)/(len(perc)-1)*100), "%")
+        # if line_index in perc:
+        #     s_perc = "|"
+        #     s = "#####"
+        #     s_perc += s * perc.index(line_index)  # s_perc = 几倍的s ##########
+        #     print(s_perc, int(perc.index(line_index)/(len(perc)-1)*100), "%")
             # e.g. line_index = 1500
             # print(s_perc, int(3)/(5-1)*100, "%"), that is 75%
+
         # 0.根据流线索引提取该流线的特征值数据.
         point_features = np.array(self.all_point_features[line_index])
         feature_data = np.array([])
@@ -244,22 +247,13 @@ class SegmentTokenizer(object):
         self.all_line_segment_arc_lengths[line_index] = [np.sum(arc_lengths[segment_point_index[i-1]:segment_point_index[i]]) for i in range(len(segment_point_index))[1:]]
 
     def calculate_all_segment_vectors(self, dim=12):
-        print("calculate_all_segment_vectors...")
+        print("\ncalculate_all_segment_vectors...")
         print("streamlines_lines_index_data =", len(self.streamlines_lines_index_data))  #len()是vtk文件流线总数
         print("Start calculate all segment vectors: "+ output_time())
-        for line_index in range(len(self.streamlines_lines_index_data)):
+        for line_index in tqdm(range(len(self.streamlines_lines_index_data))):
             self.calculate_one_line_segments_vectors(line_index, dim)
 
     def calculate_one_line_segments_vectors(self, line_index, dim):
-        # 以下的7行代码在相同代码段已做解释
-        length = len(self.streamlines_lines_index_data)
-        perc = [(length-1)//10*v for v in range(11)]
-        if line_index in perc:
-            s_perc = "|"
-            s = "#####"
-            s_perc += s * perc.index(line_index)
-            print(s_perc, int(perc.index(line_index)/(len(perc)-1)*100), "%")
-
         segment_feature_vectors = []
         segment_point_index = self.segment_points_index[line_index]  # 得到一条流线的分段index，例如[0, 20, 46, 70]
         one_line_segment_indexs = [[segment_point_index[i-1], segment_point_index[i]]\
@@ -310,24 +304,6 @@ class SegmentTokenizer(object):
                     if len(segment_vector) == dim: break
                 if len(segment_vector) == dim: break
             if len(segment_vector) == dim: break
-        """
-        len of pyramid: 6
-        row of pyramid[i]: [0.3903928  1.49570273 1.00859226 0.        ]
-        for v in row: 0.39039279908200425
-        for v in row: 1.4957027281276754
-        for v in row: 1.0085922622328294
-        for v in row: 0.0
-        row of pyramid[i]: [0.37064722 2.88413528 1.0092199  0.        ]
-        for v in row: 0.370647218337418
-        for v in row: 2.884135277414701
-        for v in row: 1.0092199022797677
-        for v in row: 0.0
-        row of pyramid[i]: [0.41013838 0.10727018 1.00796462 0.        ]
-        for v in row: 0.4101383798265905
-        for v in row: 0.1072701788406496
-        for v in row: 1.0079646221858911
-        for v in row: 0.0
-        """
         if dim > len(segment_vector):
             for i in range(dim-len(segment_vector)):
                 segment_vector.append(0.0)
@@ -344,7 +320,7 @@ class SegmentTokenizer(object):
         # print("self.segment_feature_vectors.items():")
         # print(self.segment_feature_vectors.items())
         print("Start PCA reduce dimension: " + output_time())
-        for line,value in self.segment_feature_vectors.items():
+        for line, value in tqdm(self.segment_feature_vectors.items()):
             # print("line, value: " + str(line))
             # print(value)
             # segment_feature_vectors是dict, line就是key
@@ -365,242 +341,20 @@ class SegmentTokenizer(object):
         print("Finish PCA reduce dimension and Start Clustering: " + output_time())
         X = np.array([pt for line, value in self.segment_feature_vectors_kdim.items() for pt in value], dtype="float64")  # 2668
 
+        cluster_labels, cluster_centers = self.start_clustering(X=X, v=v)
+        print(cluster_centers)
+
         df = pd.DataFrame(X)
         df.to_csv('pandas_to_csv_X.csv', header=False, index=False)
 
         # 2.1 KMeans聚类(k=v)  ok
-        if (self.cluster_mode == 'KMeans'):
-            random_state = 28
-            print("Start Clustering for KMeans to " + str(v) + " clusters, beginning with " + str(random_state) + " centroids...")
-            km = KMeans(n_clusters=v, random_state=random_state)
-            km.fit(X)
-            cluster_labels = km.predict(X)  # X中每个数据点的簇号
-            # print(cluster_labels)
-            # print(len(cluster_labels))  # 2668
-
-            cluster_centers = km.cluster_centers_  # 每个簇的中心点坐标
-            print("number of clusters:" + str(len(np.unique(cluster_labels))))
-
-        # 以下为补充的聚类方法（6种）
-
-        # 2.2 KMedoids  ok
-        elif(self.cluster_mode == 'KMedoids'):
-            # error when encountering big dataset, it will stuck
-            initial_medoids = kmeans_plusplus_initializer(X, v).initialize(return_index=True)
-            print("Initial Medoids: ")
-            print(initial_medoids)
-            print("Start Clustering for KMedoids to " + str(v) + " clusters, beginning with " + str(len(initial_medoids)) + " centroids...")
-            iter_max = 2000
-            # kmedoids_instance = kmedoids(data=X, initial_index_medoids=initial_medoids, itermax=iter_max)
-            kmedoids_instance = kmedoids(data=X, initial_index_medoids=initial_medoids)
-            kmedoids_instance.process()
-
-            cluster_medoids = kmedoids_instance.get_medoids()  # 只是索引，不是具体的二维数据点
-
-            cluster_centers = []
-            for idx in cluster_medoids:
-                cluster_centers.append(X[idx])
-            # print(cluster_centers)
-            # print(len(cluster_centers))
-
-            cluster_labels = kmedoids_instance.predict(X)
-            # print(cluster_labels)
-            print("number of clusters:" + str(len(np.unique(cluster_labels))))
-
-        # 2.3 DBSCAN ok
-        elif(self.cluster_mode == 'DBSCAN'):
-            # 这两个问题已解决4.29
-            # Q1: ValueError: Found input variables with inconsistent numbers of samples: [1594, 1017]
-            # Q2: 问题是去除掉噪声点后，数据匹配不上self.segment_feature_vectors_kdim.items()的长度，labels短了
-            print("Start Clustering for DBSCAN...")
-            print("Parameters: ")
-            # eps保持不变，increase min_samples，
-            # that will decrease the sizes of individual clusters and increase the number of clusters
-            # eps = input("eps= (usually between 0 and 1, float)\n")
-            eps = 0.4
-            eps = self.calculate_epsilon_for_density()
-            print(eps)
-            # min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
-            min_samples = 50  # double dataset dimensionality
-            # 参数还要调整，现在0.4和20得到的簇还是100左右
-
-            print("eps="+str(eps))
-            print("min_samples="+str(min_samples))
-            db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
-            # 做聚类结果评估的时候不需要去除噪声/离群点，所以不需要处理labels
-            cluster_labels = db.fit_predict(X)
-            # 以下注释掉的是去除噪声/离群点的方法
-            # __cluster_labels = db.fit_predict(X)
-            # cluster_labels = []
-            # for idx in db.core_sample_indices_:
-            #     # t = __cluster_labels[idx]
-            #     # print(t)
-            #     cluster_labels.append(__cluster_labels[idx])
-
-            # 将labels中每簇第一个索引作为center
-            __cluster_centers_idx = []
-            for idx in np.unique(cluster_labels):
-                pos = list(cluster_labels).index(idx)
-                __cluster_centers_idx.append(pos)
-            cluster_centers = []
-            for idx in __cluster_centers_idx:
-                pts = X[idx]
-                cluster_centers.append(pts)
-            print("number of clusters (removed noise):" + str(len(np.unique(cluster_labels)) - 1))
-
-            # Question: DBSCAN得到的labels为-1的点应该要从X中去除，那么数据长度就会发生变化，可能对不上dictionary
-
-        # 2.4 OPTICS ok 但聚类效果不好
-        elif(self.cluster_mode == 'OPTICS'):
-            print("Start Clustering for OPTICS...")
-            # min_samples=8, xi=0.15, min_cluster_size=10 这样的参数设置对于原始流场来说，产生的簇太多了，有835个，sil_co分数为负
-
-            # 一个点要想成为核心点，与其本身距离不大于epsilon的点的数目至少有min_samples个
-            # min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
-            min_samples = 50  # 对于原始流场，这个参数应该要更大，试试25-50
-
-            xi = .15 # higher, less clusters
-
-            # 一个簇至少包含的点数目
-            # min_cluster_size = input("min_cluster_size= (MinPts for one cluster, better between 50 and 100)\n")
-            min_cluster_size = 20  # 对于原始流场，这个参数应该要更大，50-100为佳
-
-            # 参数还要调整，现在15、0.15、20得到的簇还是100左右
-
-            print("Parameters: ")
-            print("xi="+str(xi))
-            print("min_samples=" + str(min_samples))
-            print("min_cluster_size="+str(min_cluster_size))
-
-            eps = 0.2
-            # print("eps="+str(eps))
-
-            max_eps = 1.
-            # print("max_eps="+str(max_eps))
-
-            opt_instance = OPTICS(min_samples=min_samples,
-                                  xi=xi,
-                                  min_cluster_size=min_cluster_size,
-                                  # eps=eps,
-                                  # max_eps=max_eps
-                                  ).fit(X)
-            cluster_labels = opt_instance.fit_predict(X)
-            # 将labels中每簇第一个索引作为center
-            __cluster_centers_idx = []
-            for idx in np.unique(cluster_labels):
-                pos = list(cluster_labels).index(idx)
-                __cluster_centers_idx.append(pos)
-            cluster_centers = []
-            for idx in __cluster_centers_idx:
-                pts = X[idx]
-                cluster_centers.append(pts)
-
-            print("number of clusters (removed noise):" + str(len(np.unique(cluster_labels)) - 1))
-
-        # 2.5 MeanShift ok
-        elif (self.cluster_mode == 'MeanShift'):
-            print("Start Clustering for MeanShift...")
-            # time-complexity O(n^2), n is the number of points
-            print("Parameters for estimating bandwidth: ")
-            quantile = 0.4
-            # quantile = input("quantile= (range from 0 to 1, float)\n")
-            print("quantile="+str(quantile))
-            bandwidth = estimate_bandwidth(X, quantile=quantile)
-            print("Parameters for Meanshift: ")
-            print("bandwidth="+str(bandwidth*2))
-            ms = MeanShift(bandwidth=bandwidth*2, bin_seeding=True)
-            ms.fit(X)
-            cluster_labels = ms.predict(X)
-            # print(cluster_labels)
-            # print(len(cluster_labels))
-
-            cluster_centers = ms.cluster_centers_
-            # print(cluster_centers)
-            # print(len(cluster_centers))
-
-            print("number of clusters:" + str(len(np.unique(cluster_labels))))
-
-        # 2.6 AP ok
-        elif(self.cluster_mode == 'AffinityPropagation' or self.cluster_mode == 'AP'):
-            print("Start Clustering for AffinityPropagation...")
-            print("Parameters: ")
-            damping = 0.85
-            preference = -1000  # smaller, clusters less
-            max_iter = 2000
-
-            # damping = input("damping= (range from 0 to 1, float)\n")
-            # preference = input("preference= (can be negative)\n")
-            # max_iter = input("max_iter=")
-
-            print("damping=" + str(damping))
-            print("preference="+str(preference))
-            print("max_iter=" + str(max_iter))
-
-            ap_instance = AffinityPropagation(random_state=0,
-                                     verbose=True,
-                                     max_iter=max_iter,
-                                     damping=damping,
-                                     preference=preference).fit(X)
-            cluster_labels = ap_instance.fit_predict(X)
-            # print(cluster_labels)
-            # print(len(cluster_labels))
-
-            cluster_centers = ap_instance.cluster_centers_
-            # print(cluster_centers)
-            # print(len(cluster_centers))
-
-            print("number of clusters:" + str(len(np.unique(cluster_labels))))
-
-        # 2.7 CURE ok
-        elif(self.cluster_mode == 'CURE'):
-            print("Start Clustering for CURE...")
-            number_cluster = v
-            number_represent_points = 10
-            # number_cluster = input("number_cluster=")
-            # number_represent_points = input("number_present_points=")
-
-            print("Parameters: ")
-            print("number_cluster="+str(number_cluster))
-            print("number_present_points="+str(number_represent_points))
-
-            compression = 0.3
-            # Coefficient defines level of shrinking of representation points \
-            #   toward the mean of the new created cluster after merging on each step.
-            # Usually it destributed from 0 to 1
-            print("compression="+str(compression))
-
-            cure_instance = cure(data=X,
-                                 number_cluster=number_cluster,
-                                 number_represent_points=number_represent_points,
-                                 compression=compression)
-            cure_instance.process()
-            clusters = cure_instance.get_clusters()
-
-            # create cluster labels for all points
-            cluster_labels = [None]*len(X)
-            for idx in range(len(clusters)):
-                for pts in clusters[idx]:
-                    cluster_labels[pts] = idx
-            # print(cluster_labels)
-            # print(len(cluster_labels))
-            # 以label中每个簇最早出现的位置定为center的索引
-            cluster_centers = []
-            for idx in np.unique(cluster_labels):
-                pos = list(cluster_labels).index(idx)
-                cluster_centers.append(X[pos])
-
-            print("number of clusters:" + str(len(np.unique(cluster_labels))))
-
-        else:
-            print("Error Clustering Method...The Program Will Exit Soon...")
-            exit(-1)
-
-        print("Finish Clustering: " + output_time())
         # doing clustering, get cluster_labels and cluster_centers(some clustering algorithms)
         # doing metrics
-        print("Start Calculating Clustering Validity Metrics: " + output_time())
-        validity_instance = validation(data=X, labels=cluster_labels)
-        my_validity_test = MyValidity(data=X, labels=cluster_labels)
+        print("\nStart Calculating Clustering Validity Metrics: " + output_time())
+
+        # validity_instance = validation(data=X, labels=cluster_labels, centers=cluster_centers)
+        # my_validity_test = MyValidity(data=X, labels=cluster_labels)
+        my_validity_test = clustering_validity_analysis(data=X, labels=cluster_labels, centers=cluster_centers)
 
         # 1. Silhouette Coefficient
         # The score is higher when clusters are dense and well separated.
@@ -619,12 +373,17 @@ class SegmentTokenizer(object):
         print("Davies-Bouldin Index: " + str(db_index_score) + "... Time: " + output_time())
 
         # 3. Hubert's gamma statistics
-        hubert_gamma_score = validity_instance.Baker_Hubert_Gamma()
-        print("Baker Hubert Gamma: " + str(hubert_gamma_score) + "... Time: " + output_time())
-        #
-        # # 4. Normalized validity measurement
-        modified_hubert_score = validity_instance.modified_hubert_t()
-        print("Modified Hubert T statistic: " + str(modified_hubert_score) + "... Time: " + output_time())
+        # hubert_gamma_score = validity_instance.Baker_Hubert_Gamma()
+        hubert_gamma_score = my_validity_test.Hubert_Gamma_Score()
+        print("Hubert Gamma Score: " + str(hubert_gamma_score) + "... Time: " + output_time())
+
+        # 4. Normalized validity measurement
+        # modified_hubert_score = validity_instance.modified_hubert_t()
+        # print("Normalized validity statistic: " + str(modified_hubert_score) + "... Time: " + output_time())
+
+        # 5. PBM_index
+        pbm_index = my_validity_test.PBM_index()
+        print("The PBM index: "+str(pbm_index)+"... Time: "+output_time())
 
         self.dictionary = self.__vectors2words(cluster_centers)  # 词典
         print("\nlength of self.dictionary:")
@@ -691,17 +450,17 @@ class SegmentTokenizer(object):
         # 2.复现如下的算法计算流线的词向量表达.
         # 词向量表达就是矩阵乘法运算
         # ont-hot矩阵N*1，S矩阵N*N，词向量表达ret矩阵=S*one-hot=N*1矩阵，其实就是S中的某一行向量
-        len_segment_vocabulary_index = len(self.segment_vocabularys_index.items())
-        process_bar = [(len_segment_vocabulary_index-1)//25 * i for i in range(26)]
+        # len_segment_vocabulary_index = len(self.segment_vocabularys_index.items())
+        # process_bar = [(len_segment_vocabulary_index-1)//25 * i for i in range(26)]
 
-        for index, streamline in self.segment_vocabularys_index.items():
+        for index, streamline in tqdm(self.segment_vocabularys_index.items()):
             # segment_vocabularys_index.items()是index: [pts.x_pts.y_]……这样的表达形式
-            if index in process_bar:
-                print("Processing " + str(index) + " streamline... Time: " + output_time())
-                s_perc = "|"
-                s = "##"
-                s_perc += s * process_bar.index(index)  # s_perc = 几倍的s ##########
-                print(s_perc, int(process_bar.index(index) / (len(process_bar) - 1) * 100), "%")
+            # if index in process_bar:
+            #     print("Processing " + str(index) + " streamline... Time: " + output_time())
+            #     s_perc = "|"
+            #     s = "##"
+            #     s_perc += s * process_bar.index(index)  # s_perc = 几倍的s ##########
+            #     print(s_perc, int(process_bar.index(index) / (len(process_bar) - 1) * 100), "%")
 
             S = np.array([0 for k in range(v*v)])  # v行v列的矩阵
             S_tensor = torch.FloatTensor(S)  # because torch.mm() is not applicable for LongTensor
@@ -757,7 +516,7 @@ class SegmentTokenizer(object):
         distances, indices = nbrs.kneighbors(data)
         dist_need = []
         pos = len(data)-1
-        for dst in distances:
+        for dst in tqdm(distances):
             dist_need.append(dst[pos])
         dist_need.sort(reverse=True)  # sort descendly
         # fig, ax = plt.subplots()
@@ -800,10 +559,289 @@ class SegmentTokenizer(object):
         # dist_need = cdist(valid_set, valid_set)  # 每一点与其他点的欧氏距离
         # print(dist_need)
         print(output_time())
-        dist_need = knn(valid_set, valid_set, k=32)
-        print(dist_need)
-        print(dist_need[0])  # tensor
-        print(len(dist_need[0]))  # 341536
+        dist_need = compute_euclidean(x_tensor=valid_set, y_tensor=valid_set)
+        # exit()
+        # print(dist_need)
+        # print(dist_need.cpu())  # tensor
         print(output_time())
 
         exit()
+
+    def start_clustering(self, X, v):
+        if (self.cluster_mode == 'KMeans'):
+            cluster_labels, cluster_centers = self.clustering_KMeans(X=X, v=v)
+
+        # 以下为补充的聚类方法（6种）
+
+        # 2.2 KMedoids  ok
+        elif (self.cluster_mode == 'KMedoids'):
+            cluster_labels, cluster_centers = self.clustering_KMedoids(X=X, v=v)
+
+        # 2.3 DBSCAN ok
+        elif (self.cluster_mode == 'DBSCAN'):
+            cluster_labels, cluster_centers = self.clustering_DBSCAN(X=X)
+
+        # 2.4 OPTICS ok 但聚类效果不好
+        elif (self.cluster_mode == 'OPTICS'):
+            cluster_labels, cluster_centers = self.clustering_OPTICS(X=X)
+
+        # 2.5 MeanShift ok
+        elif (self.cluster_mode == 'MeanShift'):
+            cluster_labels, cluster_centers = self.clustering_MeanShift(X=X)
+
+        # 2.6 AP ok
+        elif (self.cluster_mode == 'AffinityPropagation' or self.cluster_mode == 'AP'):
+            cluster_labels, cluster_centers = self.clustering_AP(X=X)
+
+        # 2.7 CURE ok
+        elif (self.cluster_mode == 'CURE'):
+            cluster_labels, cluster_centers = self.clustering_CURE(X=X, v=v)
+
+        else:
+            print("Error Clustering Method...The Program Will Exit Soon...")
+            exit(-1)
+
+        print("Finish Clustering: " + output_time())
+        return cluster_labels, cluster_centers
+
+    def clustering_KMeans(self, X, v=32):
+        random_state = 28
+        print("\nStart Clustering for KMeans to " + str(v) + " clusters, beginning with " + str(
+            random_state) + " centroids...")
+        km = KMeans(n_clusters=v, random_state=random_state)
+        km.fit(X)
+        cluster_labels = km.predict(X)  # X中每个数据点的簇号
+        # print(cluster_labels)
+        # print(len(cluster_labels))  # 2668
+
+        cluster_centers = km.cluster_centers_  # 每个簇的中心点坐标
+        print("number of clusters:" + str(len(np.unique(cluster_labels))))
+        return cluster_labels, cluster_centers
+
+    def clustering_KMedoids(self, X, v=32):
+        # error when encountering big dataset, it will stuck
+        initial_medoids = kmeans_plusplus_initializer(X, v).initialize(return_index=True)
+        print("\nInitial Medoids: ")
+        print(initial_medoids)
+        print("Start Clustering for KMedoids to " + str(v) + " clusters, beginning with " + str(
+            len(initial_medoids)) + " centroids...")
+        iter_max = 2000
+        # kmedoids_instance = kmedoids(data=X, initial_index_medoids=initial_medoids, itermax=iter_max)
+        kmedoids_instance = kmedoids(data=X, initial_index_medoids=initial_medoids)
+        kmedoids_instance.process()
+
+        cluster_medoids = kmedoids_instance.get_medoids()  # 只是索引，不是具体的二维数据点
+
+        cluster_centers = []
+        for idx in cluster_medoids:
+            cluster_centers.append(X[idx])
+        # print(cluster_centers)
+        # print(len(cluster_centers))
+
+        cluster_labels = kmedoids_instance.predict(X)
+        # print(cluster_labels)
+        print("number of clusters:" + str(len(np.unique(cluster_labels))))
+        return cluster_labels, cluster_centers
+
+    def clustering_DBSCAN(self, X):
+
+        # 这两个问题已解决4.29
+        # Q1: ValueError: Found input variables with inconsistent numbers of samples: [1594, 1017]
+        # Q2: 问题是去除掉噪声点后，数据匹配不上self.segment_feature_vectors_kdim.items()的长度，labels短了
+        print("\nStart Clustering for DBSCAN...")
+        print("Parameters: ")
+        # eps保持不变，increase min_samples，
+        # that will decrease the sizes of individual clusters and increase the number of clusters
+        # eps = input("eps= (usually between 0 and 1, float)\n")
+        eps = 0.27
+        # eps = self.calculate_epsilon_for_density()
+        # print(eps)
+        # min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
+        min_samples = 50  # double dataset dimensionality
+        # 参数还要调整，现在0.4和20得到的簇还是100左右
+
+        print("eps=" + str(eps))
+        print("min_samples=" + str(min_samples))
+        db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
+        # 做聚类结果评估的时候不需要去除噪声/离群点，所以不需要处理labels
+        cluster_labels = db.fit_predict(X)
+        # 以下注释掉的是去除噪声/离群点的方法
+        # __cluster_labels = db.fit_predict(X)
+        # cluster_labels = []
+        # for idx in db.core_sample_indices_:
+        #     # t = __cluster_labels[idx]
+        #     # print(t)
+        #     cluster_labels.append(__cluster_labels[idx])
+
+        # 将labels中每簇第一个索引作为center
+        __cluster_centers_idx = []
+        for idx in np.unique(cluster_labels):
+            pos = list(cluster_labels).index(idx)
+            __cluster_centers_idx.append(pos)
+        cluster_centers = []
+        for idx in __cluster_centers_idx:
+            pts = X[idx]
+            cluster_centers.append(pts)
+        print("number of clusters (removed noise):" + str(len(np.unique(cluster_labels)) - 1))
+        total_point = 0
+        n_noise = 0
+        for i in cluster_labels:
+            if i == -1:
+                n_noise = n_noise + 1
+            total_point = total_point + 1
+        print("total points: " + str(total_point))
+        print("noise: " + str(n_noise))
+        # Question: DBSCAN得到的labels为-1的点应该要从X中去除，那么数据长度就会发生变化，可能对不上dictionary
+        return cluster_labels, cluster_centers
+
+    def clustering_OPTICS(self, X):
+        print("\nStart Clustering for OPTICS...")
+        # min_samples=8, xi=0.15, min_cluster_size=10 这样的参数设置对于原始流场来说，产生的簇太多了，有835个，sil_co分数为负
+
+        # 一个点要想成为核心点，与其本身距离不大于epsilon的点的数目至少有min_samples个
+        # min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
+        min_samples = 10  # 对于原始流场，这个参数应该要更大，试试25-50
+
+        xi = .15  # higher, less clusters
+
+        # 一个簇至少包含的点数目
+        # min_cluster_size = input("min_cluster_size= (MinPts for one cluster, better between 50 and 100)\n")
+        min_cluster_size = 50  # 对于原始流场，这个参数应该要更大，50-100为佳
+
+        # 参数还要调整，现在15、0.15、20得到的簇还是100左右
+
+        print("Parameters: ")
+        print("xi=" + str(xi))
+        print("min_samples=" + str(min_samples))
+        print("min_cluster_size=" + str(min_cluster_size))
+
+        eps = 0.2
+        # print("eps="+str(eps))
+
+        max_eps = 1.
+        # print("max_eps="+str(max_eps))
+
+        opt_instance = OPTICS(min_samples=min_samples,
+                              xi=xi,
+                              min_cluster_size=min_cluster_size,
+                              # eps=eps,
+                              # max_eps=max_eps
+                              ).fit(X)
+        cluster_labels = opt_instance.fit_predict(X)
+        # 将labels中每簇第一个索引作为center
+        __cluster_centers_idx = []
+        for idx in np.unique(cluster_labels):
+            pos = list(cluster_labels).index(idx)
+            __cluster_centers_idx.append(pos)
+        cluster_centers = []
+        for idx in __cluster_centers_idx:
+            pts = X[idx]
+            cluster_centers.append(pts)
+
+        print("number of clusters (removed noise):" + str(len(np.unique(cluster_labels)) - 1))
+        total_point = 0
+        n_noise = 0
+        for i in cluster_labels:
+            if i == -1:
+                n_noise = n_noise + 1
+            total_point = total_point + 1
+        print("total points: " + str(total_point))
+        print("noise: " + str(n_noise))
+
+        return cluster_labels, cluster_centers
+
+    def clustering_MeanShift(self, X):
+        print("\nStart Clustering for MeanShift...")
+        # time-complexity O(n^2), n is the number of points
+        print("Parameters for estimating bandwidth: ")
+        quantile = 0.27
+        # quantile = input("quantile= (range from 0 to 1, float)\n")
+        print("quantile=" + str(quantile))
+        bandwidth = estimate_bandwidth(X, quantile=quantile)
+        print("Parameters for Meanshift: ")
+        print("bandwidth=" + str(bandwidth * 2))
+        ms = MeanShift(bandwidth=bandwidth * 2, bin_seeding=True)
+        ms.fit(X)
+        cluster_labels = ms.predict(X)
+        # print(cluster_labels)
+        # print(len(cluster_labels))
+
+        cluster_centers = ms.cluster_centers_
+        # print(cluster_centers)
+        # print(len(cluster_centers))
+
+        print("number of clusters:" + str(len(np.unique(cluster_labels))))
+        return cluster_labels, cluster_centers
+
+    def clustering_AP(self, X):
+        print("\nStart Clustering for AffinityPropagation...")
+        print("Parameters: ")
+        damping = 0.85
+        preference = -1000  # smaller, clusters less
+        max_iter = 2000
+
+        # damping = input("damping= (range from 0 to 1, float)\n")
+        # preference = input("preference= (can be negative)\n")
+        # max_iter = input("max_iter=")
+
+        print("damping=" + str(damping))
+        print("preference=" + str(preference))
+        print("max_iter=" + str(max_iter))
+
+        ap_instance = AffinityPropagation(random_state=0,
+                                          verbose=True,
+                                          max_iter=max_iter,
+                                          damping=damping,
+                                          preference=preference).fit(X)
+        cluster_labels = ap_instance.fit_predict(X)
+        # print(cluster_labels)
+        # print(len(cluster_labels))
+
+        cluster_centers = ap_instance.cluster_centers_
+        # print(cluster_centers)
+        # print(len(cluster_centers))
+
+        print("number of clusters:" + str(len(np.unique(cluster_labels))))
+
+        return cluster_labels, cluster_centers
+
+    def clustering_CURE(self, X, v):
+        print("\nStart Clustering for CURE...")
+        number_cluster = v
+        number_represent_points = 10
+        # number_cluster = input("number_cluster=")
+        # number_represent_points = input("number_present_points=")
+
+        print("Parameters: ")
+        print("number_cluster=" + str(number_cluster))
+        print("number_present_points=" + str(number_represent_points))
+
+        compression = 0.3
+        # Coefficient defines level of shrinking of representation points \
+        #   toward the mean of the new created cluster after merging on each step.
+        # Usually it destributed from 0 to 1
+        print("compression=" + str(compression))
+
+        cure_instance = cure(data=X,
+                             number_cluster=number_cluster,
+                             number_represent_points=number_represent_points,
+                             compression=compression)
+        cure_instance.process()
+        clusters = cure_instance.get_clusters()
+
+        # create cluster labels for all points
+        cluster_labels = [None] * len(X)
+        for idx in range(len(clusters)):
+            for pts in clusters[idx]:
+                cluster_labels[pts] = idx
+        # print(cluster_labels)
+        # print(len(cluster_labels))
+        # 以label中每个簇最早出现的位置定为center的索引
+        cluster_centers = []
+        for idx in np.unique(cluster_labels):
+            pos = list(cluster_labels).index(idx)
+            cluster_centers.append(X[pos])
+
+        print("number of clusters:" + str(len(np.unique(cluster_labels))))
+
+        return cluster_labels, cluster_centers
