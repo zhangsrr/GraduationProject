@@ -2,22 +2,19 @@
 test streamlines_segment
 """
 from backend.streamlines_segment_tool import *
+from backend.helper_function import output_time
 import sys
-import backend.global_define as glo
-from datetime import datetime
+
 
 if __name__ == '__main__':
-    vtk_name = 'tec025.5044_00_type00_streamlines_40_both_reduced_40'
+    vtk_name = 'tec025.5044_00_type00_streamlines_40_both_reduced_500'
     # path = "/home/gp2021-zsr/gp/"
     path = "C:/AllSoftwareDisk/PycharmProjects/GraduationProject/"
     src_streamlines_filename = path + "data/" + vtk_name + ".vtk"
     dest_streamlines_filename_prefix = path + "data/" + vtk_name + "_processed_"
     dest_streamlines_count_list = [1, 2, 4, 8, 16, 32, 40]
 
-    glo._init()
-    glo.set_value('starttime', datetime.now())
-    glo.set_value('endtime', datetime.now())
-    print("Time: " + str(glo.time_pass()) + '\n')
+    print("Time: " + output_time() + '\n')
 
     print(">>>>>>>>>>>>>>>[" + vtk_name + ".vtk]<<<<<<<<<<<<<")
     print("Start filtering streamlines...")
@@ -50,7 +47,6 @@ if __name__ == '__main__':
                            dest_streamlines_filename_prefix,
                            cluster_mode)
     print("Running finished.")
-    glo.set_value('endtime', datetime.now())
-    print("Time: " + str(glo.time_pass()) + '\n')
+    print("Time: " + output_time() + '\n')
 
 print("Done.")

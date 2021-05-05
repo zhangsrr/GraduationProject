@@ -1,3 +1,8 @@
+# images
+*.png
+*.jpg
+*.jepg
+
 *.vtk
 *.csv
 # Byte-compiled / optimized / DLL files

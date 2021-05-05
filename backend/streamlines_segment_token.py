@@ -11,6 +11,7 @@ import numpy as np
 from backend.stream_space_curve import StreamSpaceCurve
 from backend.pca import pca
 from backend.clustering_validity_measurement import MyValidity
+from backend.helper_function import output_time
 
 from sklearn.cluster import KMeans, DBSCAN, OPTICS, MeanShift, AffinityPropagation, estimate_bandwidth
 from pyclustering.cluster.cure import cure
@@ -20,14 +21,19 @@ from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
 from openensembles.validation import validation
 import scipy.spatial.distance as dist
 import pandas as pd
-from datetime import datetime
+
 
 import torch
+from torch_cluster import knn
 from torch import linalg as LA
+from sklearn.neighbors import NearestNeighbors  # for computing epsilon, but time consuming large
+
+# if torch.cuda.is_available():
+from torch import cdist
+
+import matplotlib.pyplot as plt
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-import backend.global_define as glo
 
 sel_feature = [
     "curvature",  # 曲率
@@ -79,6 +85,7 @@ class SegmentTokenizer(object):
         """
         if self.cluster_mode is None:
             raise("The cluster mode is None.")
+        self.test_torch()
         # 计算流线各点的特征值.
         self.get_all_point_features_from_line()
         # 根据特征值对流线进行分段. sel_feature[0]曲率，分段只能依靠一个特征值进行分段？
@@ -86,20 +93,17 @@ class SegmentTokenizer(object):
         # 计算流线分段的特征向量.
         self.calculate_all_segment_vectors(dim=12) #【注】此处的dim应该由外部主函数传入，暂时写为特定值. dim只能是len(sel_feature)的倍数
         # 基于流线分段的特征向量生成词汇. 用到聚类算法
-        glo.set_value('endtime', datetime.now())
-        print("Finish calculate all segment vectors: " + str(glo.time_pass()) + '\n')
+        print("Finish calculate all segment vectors: " + output_time() + '\n')
         self.generate_vocabulary_based_on_streamline_segmentation(k=2, v=32)
 
         # 生成流线的词向量表达.
-        glo.set_value('endtime', datetime.now())
-        print("Start generate streamline word vector: " + str(glo.time_pass()) + '\n')
+        print("Start generate streamline word vector: " + output_time() + '\n')
         self.generate_streamlined_word_vector_expressions(v=32)
 
     def calculate_main_streamline_index(self, cnt, distant_typeid=0):
         """应用1：流场压缩(pca+聚类).
         """
-        glo.set_value('endtime', datetime.now())
-        print("calculate_main_streamline_index ", cnt, " ..." + " Time: " + str(glo.time_pass()))
+        print("calculate_main_streamline_index ", cnt, " ..." + " Time: " + output_time())
         assert(0 <= cnt <= len(self.all_line_vocabulary_vectors))
         # 1.计算不相似度矩阵.
         dissimilarity_matrix = self.__calculate_dissimilarity_matrix(distant_typeid)
@@ -242,8 +246,7 @@ class SegmentTokenizer(object):
     def calculate_all_segment_vectors(self, dim=12):
         print("calculate_all_segment_vectors...")
         print("streamlines_lines_index_data =", len(self.streamlines_lines_index_data))  #len()是vtk文件流线总数
-        glo.set_value('endtime', datetime.now())
-        print("Start calculate all segment vectors: "+str(glo.get_value('endtime')-glo.get_value('starttime')))
+        print("Start calculate all segment vectors: "+ output_time())
         for line_index in range(len(self.streamlines_lines_index_data)):
             self.calculate_one_line_segments_vectors(line_index, dim)
 
@@ -340,8 +343,7 @@ class SegmentTokenizer(object):
         # 1.pca主成分分析（降到k维）
         # print("self.segment_feature_vectors.items():")
         # print(self.segment_feature_vectors.items())
-        glo.set_value('endtime', datetime.now())
-        print("Start PCA reduce dimension: " + str(glo.get_value('endtime')-glo.get_value('starttime')))
+        print("Start PCA reduce dimension: " + output_time())
         for line,value in self.segment_feature_vectors.items():
             # print("line, value: " + str(line))
             # print(value)
@@ -360,8 +362,7 @@ class SegmentTokenizer(object):
         # streamlines_segment_token.py:210: ComplexWarning: Casting complex values to real discards the imaginary part
         #   for pt in value], dtype="float64")
         # 此时self.segment_feature_vectors_kdim都降成了k维，即pt均为k维
-        glo.set_value('endtime', datetime.now())
-        print("Finish PCA reduce dimension and Start Clustering: " + str(glo.time_pass()))
+        print("Finish PCA reduce dimension and Start Clustering: " + output_time())
         X = np.array([pt for line, value in self.segment_feature_vectors_kdim.items() for pt in value], dtype="float64")  # 2668
 
         df = pd.DataFrame(X)
@@ -417,8 +418,12 @@ class SegmentTokenizer(object):
             # that will decrease the sizes of individual clusters and increase the number of clusters
             # eps = input("eps= (usually between 0 and 1, float)\n")
             eps = 0.4
+            eps = self.calculate_epsilon_for_density()
+            print(eps)
             # min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
-            min_samples = 20  # double dataset dimensionality
+            min_samples = 50  # double dataset dimensionality
+            # 参数还要调整，现在0.4和20得到的簇还是100左右
+
             print("eps="+str(eps))
             print("min_samples="+str(min_samples))
             db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
@@ -452,13 +457,15 @@ class SegmentTokenizer(object):
 
             # 一个点要想成为核心点，与其本身距离不大于epsilon的点的数目至少有min_samples个
             # min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
-            min_samples = 15  # 对于原始流场，这个参数应该要更大，试试25-50
+            min_samples = 50  # 对于原始流场，这个参数应该要更大，试试25-50
 
             xi = .15 # higher, less clusters
 
             # 一个簇至少包含的点数目
             # min_cluster_size = input("min_cluster_size= (MinPts for one cluster, better between 50 and 100)\n")
             min_cluster_size = 20  # 对于原始流场，这个参数应该要更大，50-100为佳
+
+            # 参数还要调整，现在15、0.15、20得到的簇还是100左右
 
             print("Parameters: ")
             print("xi="+str(xi))
@@ -588,12 +595,10 @@ class SegmentTokenizer(object):
             print("Error Clustering Method...The Program Will Exit Soon...")
             exit(-1)
 
-        glo.set_value('endtime', datetime.now())
-        print("Finish Clustering: " + str(glo.time_pass()))
+        print("Finish Clustering: " + output_time())
         # doing clustering, get cluster_labels and cluster_centers(some clustering algorithms)
         # doing metrics
-        glo.set_value('endtime', datetime.now())
-        print("Start Calculating Clustering Validity Metrics: " + str(glo.time_pass()))
+        print("Start Calculating Clustering Validity Metrics: " + output_time())
         validity_instance = validation(data=X, labels=cluster_labels)
         my_validity_test = MyValidity(data=X, labels=cluster_labels)
 
@@ -601,29 +606,25 @@ class SegmentTokenizer(object):
         # The score is higher when clusters are dense and well separated.
         # self.silhouette_coefficient = self.validity_measurement_silhouette(data=X, cluster_labels=cluster_labels)
 
-        glo.set_value('endtime', datetime.now())
         sil_score = my_validity_test.Silhouette_Coefficient()
         # sil_score = validity_instance.silhouette()
-        print("Silhouette Coefficient: " + str(sil_score) + "... Time: " + str(glo.time_pass()))
+        print("Silhouette Coefficient: " + str(sil_score) + "... Time: " + output_time())
 
         # 2. Davies-Bouldin Index
         # Values closer to zero indicate a better partition.
         # self.db_index = self.validity_measurement_db_index(data=X, cluster_labels=cluster_labels)
 
-        glo.set_value('endtime', datetime.now())
         # db_index_score = validity_instance.Davies_Bouldin()
         db_index_score = my_validity_test.Davies_Bouldin_Index()
-        print("Davies-Bouldin Index: " + str(db_index_score) + "... Time: " + str(glo.time_pass()))
+        print("Davies-Bouldin Index: " + str(db_index_score) + "... Time: " + output_time())
 
         # 3. Hubert's gamma statistics
         hubert_gamma_score = validity_instance.Baker_Hubert_Gamma()
-        glo.set_value('endtime', datetime.now())
-        print("Baker Hubert Gamma: " + str(hubert_gamma_score) + "... Time: " + str(glo.time_pass()))
+        print("Baker Hubert Gamma: " + str(hubert_gamma_score) + "... Time: " + output_time())
         #
         # # 4. Normalized validity measurement
         modified_hubert_score = validity_instance.modified_hubert_t()
-        glo.set_value('endtime', datetime.now())
-        print("Modified Hubert T statistic: " + str(modified_hubert_score) + "... Time: " + str(glo.time_pass()))
+        print("Modified Hubert T statistic: " + str(modified_hubert_score) + "... Time: " + output_time())
 
         self.dictionary = self.__vectors2words(cluster_centers)  # 词典
         print("\nlength of self.dictionary:")
@@ -696,8 +697,7 @@ class SegmentTokenizer(object):
         for index, streamline in self.segment_vocabularys_index.items():
             # segment_vocabularys_index.items()是index: [pts.x_pts.y_]……这样的表达形式
             if index in process_bar:
-                glo.set_value('endtime', datetime.now())
-                print("Processing " + str(index) + " streamline... Time: " + str(glo.time_pass()))
+                print("Processing " + str(index) + " streamline... Time: " + output_time())
                 s_perc = "|"
                 s = "##"
                 s_perc += s * process_bar.index(index)  # s_perc = 几倍的s ##########
@@ -750,3 +750,60 @@ class SegmentTokenizer(object):
             S = S_tensor.to('cpu').numpy()
             self.all_line_vocabulary_vectors[index] = S
 
+    def calculate_epsilon_for_density(self):
+        data = self.streamlines_vertexs_data
+        # time complexity high, cannot compute quickly
+        nbrs = NearestNeighbors(n_neighbors=len(data)).fit(data)
+        distances, indices = nbrs.kneighbors(data)
+        dist_need = []
+        pos = len(data)-1
+        for dst in distances:
+            dist_need.append(dst[pos])
+        dist_need.sort(reverse=True)  # sort descendly
+        # fig, ax = plt.subplots()
+        # ax.plot(list(range(1, len(data)+1)), dist_need)
+        # ax.set_title('elbow plot for epsilon')
+        # ax.set_xlabel('list index')
+        # ax.set_ylabel('point distance')
+        # xtick = [(len(data) - 1)//10 * i for i in range(11)]
+        # ax.set_xticks(xtick)
+        # plt.show()
+
+        need_dist = np.array(dist_need)
+        eps_index = np.where(need_dist < 400)
+        eps = (eps_index[0]) / len(data)
+        return eps[0]
+
+    def test_torch(self):
+        # 存的streamlines
+        train_set_idx = []
+        for line in self.streamlines_lines_index_data:
+            for pts_index in line:
+                train_set_idx.append(pts_index)
+
+        train_set = []
+        for idx in train_set_idx:
+            pts = self.streamlines_vertexs_data[idx]
+            train_set.append(pts)
+
+        # pca 降维
+        reduced_train, recon_data = pca(train_set, 2)
+        reduced_train = np.squeeze(np.asarray(reduced_train))
+        train_set_size = int(len(reduced_train)*0.9)
+        valid_set_size = len(reduced_train) - train_set_size
+        valid_set = []
+        idx_array = np.random.randint(low=0, high=len(reduced_train), size=valid_set_size)
+        for i in idx_array:
+            valid_set.append(reduced_train[i])
+        valid_set = torch.tensor(valid_set).to(device)
+
+        # dist_need = cdist(valid_set, valid_set)  # 每一点与其他点的欧氏距离
+        # print(dist_need)
+        print(output_time())
+        dist_need = knn(valid_set, valid_set, k=32)
+        print(dist_need)
+        print(dist_need[0])  # tensor
+        print(len(dist_need[0]))  # 341536
+        print(output_time())
+
+        exit()

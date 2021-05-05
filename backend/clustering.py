@@ -13,6 +13,9 @@ from pyclustering.cluster.cure import cure
 import sys
 from sklearn import metrics
 import datetime
+import matplotlib.pyplot as plt
+from matplotlib.colors import rgb2hex
+from sklearn.neighbors import NearestNeighbors
 # np.set_printoptions(threshold=sys.maxsize)
 
 def readfile():
@@ -129,64 +132,74 @@ def affinitypropagation():
 def dbscan():
     X = readfile()
     # higher eps, higher min_samples, that is less clusters
-    eps = 0.2
-    min_samples = 4
+    print("DBSCAN Parameters: ")
+    # eps保持不变，increase min_samples，
+    # that will decrease the sizes of individual clusters and
+    #           increase the number of clusters
+    # eps = input("eps= (usually between 0 and 1, float)\n")
+    # eps = 0.5
+    eps = compute_dist()
+    print(eps)
+    # min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
+    min_samples = 4  # double dataset dimensionality
+
+    print("eps=" + str(eps))
+    print("min_samples=" + str(min_samples))
+    # 参数还要调整，现在0.4和20得到的簇还是100左右
+
     db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
     core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
 
-    # print(core_samples_mask)  # 空白核心样本点 All False
-    # print(len(core_samples_mask))  # 2668  90182
-    # print(type(core_samples_mask))
-
     core_samples_mask[db.core_sample_indices_] = True
-    # 不在core_sample的都是噪声点，有的噪声点也被分配了簇
+    # 不在core_sample的都是噪声点/离群点，有的噪声点也被分配了簇
     core_sample_indices = db.core_sample_indices_
-    print(core_sample_indices)
-    print(len(core_sample_indices))
-
-    # print(db.core_sample_indices_)  # [    0     2     3 ... 90178 90179 90180]，
-    # print(len(db.core_sample_indices_))  # 1731  45913
-    # print(type(db.core_sample_indices_))
-    all_pts = db.components_
-    # print(len(all_pts))
-
-    # print(db.components_)  # detailed core_samples_coordinate
-    # print(len(db.components_))  # 1731
+    # print(core_sample_indices)
+    # print(len(core_sample_indices))
 
     labels = db.fit_predict(X)
-    # print(labels)  # [-1  0  0 ... 64 64 -1]
-    # print(len(labels))  # 2668 need to remove some points
-    # print("np.unique(labels): ")
-    # print(np.unique(labels))
+    labels_nonoise = []
+    for idx in labels:
+        if idx == -1:
+            pass
+        else:
+            labels_nonoise.append(idx)
+    # print(labels_nonoise)
+    # print(np.unique(labels_nonoise))
 
     n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
-    print(n_clusters_)  # 25
+    print("n_clusters(removed noise):"+str(n_clusters_))
+    total_point = 0
+    n_noise = 0
+    for i in labels:
+        if i == -1:
+            n_noise = n_noise+1
+        total_point = total_point+1
+    print("total points: " + str(total_point))
+    print("noise: "+str(n_noise))
 
-    # 根据indices和labels构造newlabels
-    # new_labels = []
-    # for idx in core_sample_indices:
-    #     t = labels[idx]
-    #     # print(t)
-    #     new_labels.append(t)
-    # print(new_labels)
-    # print(len(new_labels))
-    new_labels = db.fit_predict(X)
 
     # 将labels中每簇第一个索引作为center
-    uni_labels = np.unique(new_labels)
-    print(uni_labels)
+    uni_labels = np.unique(labels)
+    # print(uni_labels)
     __cluster_centers = []
     for i in uni_labels:
         # print(i)
-        pos = list(new_labels).index(i)
+        pos = list(labels).index(i)
         __cluster_centers.append(pos)
-    print(__cluster_centers)
+    # print(__cluster_centers)
     cluster_centers = []
     for idx in __cluster_centers:
         pts = X[idx]
         cluster_centers.append(pts)
-    print(cluster_centers)
-    print(len(cluster_centers))
+    # print(cluster_centers)
+    # print(len(cluster_centers))
+    # print(len(labels))
+    # print(len(cluster_centers))
+    draw_plot(data=X, labels=labels, centers=cluster_centers)
+    sil_score = metrics.silhouette_score(X=X, labels=labels)
+    print("sil_score:" + str(sil_score))
+    davies_bouldin_score = metrics.davies_bouldin_score(X=X, labels=labels)
+    print("davies_bouldin score:"+str(davies_bouldin_score))
 
 
 # ok
@@ -196,14 +209,14 @@ def optics():
     # need adjust parameters still
     print("Parameters: ")
 
-    min_samples = 8  # higher, less clusters
+    min_samples = 40  # higher, less clusters
     # 一个点要想成为核心点，与其本身距离不大于epsilon的点的数目至少有min_samples个
     print("min_samples=" + str(min_samples))
 
     xi = .15  # higher, less clusters
     print("xi=" + str(xi))
 
-    min_cluster_size = 10  # 一个簇至少包含的点数目
+    min_cluster_size = 50  # 一个簇至少包含的点数目
     print("min_cluster_size=" + str(min_cluster_size))
 
     # eps = 0.15
@@ -223,12 +236,15 @@ def optics():
                  ).fit(X)
     cluster_labels = opt.fit_predict(X)
 
+    n_clusters_ = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
+    print("n_clusters(removed noise):" + str(n_clusters_))
+
     # cluster_labels = opt.labels_[opt.ordering_]  # may be cluster_index
-    print("\ncluster_labels:")
-    print(cluster_labels)
-    print(len(cluster_labels))
-    print("\nnp.unique(cluster_labels):")
-    print(np.unique(cluster_labels))
+    # print("\ncluster_labels:")
+    # print(cluster_labels)
+    # print(len(cluster_labels))
+    # print("\nnp.unique(cluster_labels):")
+    # print(np.unique(cluster_labels))
 
     # 将labels中每簇第一个索引作为center
     __cluster_centers_idx = []
@@ -239,8 +255,8 @@ def optics():
     for idx in __cluster_centers_idx:
         pts = X[idx]
         cluster_centers.append(pts)
-    print("cluster_centers: \n" + str(cluster_centers))
-    print(len(cluster_centers))
+    # print("cluster_centers: \n" + str(cluster_centers))
+    # print(len(cluster_centers))
 
     # print("\nopt.cluster_hierarchy_:")
     # print(opt.cluster_hierarchy_)
@@ -395,8 +411,10 @@ def test_range():
 def test(arg):
     print(arg)
 
+
 def matrix_gpu():
     X = readfile()
+
 
 def py_matmul4(a, b):
     ra, ca = a.shape
@@ -405,43 +423,127 @@ def py_matmul4(a, b):
 
     return np.matmul(a, b)
 
-if __name__ == '__main__':
-    # if len(sys.argv) != 2:
-    #     print("Error arguments input, should be python test.py cluster_mode")
-    #     print("e.g. python test.py KMeans")
-    #     exit(-1)
-    # cluster_mode = sys.argv[1]
-    # assert (cluster_mode == "KMeans" or
-    #         cluster_mode == "KMedoids" or
-    #         cluster_mode == "DBSCAN" or
-    #         cluster_mode == "OPTICS" or
-    #         cluster_mode == "MeanShift" or
-    #         cluster_mode == "AP" or
-    #         cluster_mode == "AffinityPropagation" or
-    #         cluster_mode == "CURE")
-    # test(cluster_mode)
-    # starttime = datetime.datetime.now()
-    # a = np.array([[1,2,3],
-    #               [4,5,6],
-    #               [7,8,9],
-    #               [10,11,12]])
-    # b = np.array([[1,2,3,4],
-    #              [5,6,7,8],
-    #              [9,10,11,12]])
-    # ar, ac = a.shape
-    # print(ar, ac)
-    # br, bc = b.shape
-    # print(br, bc)
-    # assert (ac == br)
-    # result = py_matmul4(a, b)
-    # endtime = datetime.datetime.now()
-    # print(endtime-starttime)
 
+def test_input(argv):
+    if len(argv) != 2:
+        print("Error arguments input, should be python test.py cluster_mode")
+        print("e.g. python test.py KMeans")
+        exit(-1)
+    cluster_mode = sys.argv[1]
+    assert (cluster_mode == "KMeans" or
+            cluster_mode == "KMedoids" or
+            cluster_mode == "DBSCAN" or
+            cluster_mode == "OPTICS" or
+            cluster_mode == "MeanShift" or
+            cluster_mode == "AP" or
+            cluster_mode == "AffinityPropagation" or
+            cluster_mode == "CURE")
+    test(cluster_mode)
+
+
+def draw_raw():
+    X = readfile()
+    x = []
+    y = []
+    for pts in X:
+        x.append(pts[0])
+        y.append(pts[1])
+    plt.scatter(x, y, alpha=0.5)
+    plt.show()
+
+
+def draw_plot(data, labels, centers):
+    colors = tuple([(np.random.random(), np.random.random(), np.random.random()) for i in range(len(np.unique(labels))-1)])
+    colors = [rgb2hex(x) for x in colors]  # from  matplotlib.colors import  rgb2hex
+    # print(colors)
+    fig = plt.figure()
+    ax = plt.subplot()
+
+    for i, color in enumerate(colors):
+        need_idx = np.where(labels == i)[0]
+        # print(need_idx)
+        ax.scatter(data[need_idx, 0], data[need_idx, 1], c=color, label=i, alpha=0.5)
+
+    noise_data = []
+    idx = 0
+    for i in labels:
+        if i == -1:
+            noise_data.append(data[idx])
+        idx = idx+1
+    # print(noise_data)
+    ax.scatter(noise_data[0], noise_data[1], c='black', alpha=0.5)
+    # print(len(noise_data))
+    plt.show()
+    # plt.scatter(x, y, s=area, c=colors, alpha=0.5)
+    # plt.show()
+    # j = 0
+    # mark = np.random.rand(len(np.unique(labels)))
+    # for i in labels:
+    #     plt.plot([data[j:j+1, 0]], [data[j:j+1, 1]], mark[i])
+    #     j = j+1
+
+
+def test_data_format():
+    data = readfile()
+    x = [data[0:1, 0]]
+    y = [data[0:1, 1]]
+    print(x)
+    print(y)
+
+
+def compute_dist():
+    data = readfile()
+    nbrs = NearestNeighbors(n_neighbors=len(data)).fit(data)
+    distances, indices = nbrs.kneighbors(data)
+    need_dist = []
+    pos = len(data)-1
+    for dist in distances:
+        need_dist.append(dist[pos])
+    # print(need_dist)
+    need_dist.sort(reverse=True)
+    # print(need_dist)
+    # print(distances)
+    # print(indices)
+    plt1 = plt.subplot(2, 2, 1)
+    elbow = plt.subplot(2, 1, 2)
+
+    elbow.plot(list(range(1, len(data) + 1)), need_dist, )  # elbow plot
+    elbow.set_xlabel('list index')
+    elbow.set_ylabel('point distance')
+    elbow.set_title('elbow plot for epsilon')
+    # elbow.show()
+    eps = distances.mean()
+    # plt.savefig('../imgs/test.png')
+    xtick = [(len(data) - 1)//10 * i for i in range(11)]
+    elbow.set_xticks(xtick)
+    elbow.tick_params(labelsize=10)
+    plt.tight_layout()
+    plt.show()
+    # print(eps)
+    # print(need_dist[100])
+    need_dist = np.array(need_dist)
+
+    eps_index = np.where(need_dist < 400)
+    eps = (eps_index[0]) / len(data)
+    # print(np.where(need_dist < 401))
+    # print(eps)
+    return eps[0]
+
+
+if __name__ == '__main__':
+    # test_input(sys.argv)
     # kmeans() # ok
     # meanshift()  # ok
     # affinitypropagation()  # ok
+    # draw_raw()
+    # print("")
+    # compute_dist()
+
     dbscan()  # ok
     # optics()  # ok
+    # test_data_format()
     # clustering_kmedoids()  # ok
     # clustering_cure()  # ok
     # test_range()
+
+

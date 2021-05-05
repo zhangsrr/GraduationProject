@@ -25,7 +25,7 @@ class StreamlinesSegment(object):
         Initialize member variables.
 
         """
-        self.streamlines_vertexs_data = None        # 顶点数据
+        self.streamlines_vertexs_data = None        # 顶点数据 np.array()
         self.streamlines_lines_index_data = None    # 流线数据
         self.line_map_real2formal = dict()          # 实际流线数据到原始流线数据的映射
         self.streamlines_attributes_data = dict()   # 属性数据
