@@ -702,7 +702,7 @@ class SegmentTokenizer(object):
         # min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
         min_samples = 10  # 对于原始流场，这个参数应该要更大，试试25-50
 
-        xi = .15  # higher, less clusters
+        xi = 0.1  # higher, less clusters
 
         # 一个簇至少包含的点数目
         # min_cluster_size = input("min_cluster_size= (MinPts for one cluster, better between 50 and 100)\n")
@@ -754,7 +754,7 @@ class SegmentTokenizer(object):
         print("\nStart Clustering for MeanShift...")
         # time-complexity O(n^2), n is the number of points
         print("Parameters for estimating bandwidth: ")
-        quantile = 0.27
+        quantile = 0.2
         # quantile = input("quantile= (range from 0 to 1, float)\n")
         print("quantile=" + str(quantile))
         bandwidth = estimate_bandwidth(X, quantile=quantile)
