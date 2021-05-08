@@ -18,9 +18,10 @@ from matplotlib.colors import rgb2hex
 from sklearn.neighbors import NearestNeighbors
 # np.set_printoptions(threshold=sys.maxsize)
 
-def readfile():
+def readfile(filename='pandas_to_csv_X_500lines.csv'):
     # filename = "pandas_x_for_clustering.csv"
-    filename = "com_pandas_x_for_clustering.csv"
+    folder = "../sheet/cluster/"
+    filename = folder+filename
 
     X = pd.read_csv(filename, header=None)
     # print(type(X))
@@ -108,13 +109,13 @@ def affinitypropagation():
     # smaller preference, higher damping, that is less clusters
     print("Start Clustering for AffinityPropagation...")
     print("Parameters: ")
-    damping = 0.85
+    damping = 0.7
     print("damping=" + str(damping))
-    preference = -1000  # smaller, clusters less
+    preference = -200  # smaller, clusters less
     print("preference=" + str(preference))
-    max_iter = 2000
+    max_iter = 1000
     print("max_iter=" + str(max_iter))
-    af = AffinityPropagation(random_state=0,
+    af = AffinityPropagation(random_state=28,
                              verbose=True,
                              max_iter=max_iter,
                              damping=damping,
@@ -124,8 +125,13 @@ def affinitypropagation():
     print(len(cluster_indices))
 
     cluster_labels = af.fit_predict(X)
-    print(cluster_labels)
-    print(len(cluster_labels))
+    # print(cluster_labels)
+    # print(len(cluster_labels))
+    print("sil_score:"+str(metrics.silhouette_score(X=X, labels=cluster_labels)))
+    # 0.72 0.53579  68
+    # 0.7  0.52 66
+    # 0.65 0.536  66
+    # 0.6  0.489 62
 
 
 # ok
@@ -312,39 +318,88 @@ def meanshift():
 def clustering_cure():
     X = readfile()
     v = 32
-    number_represent_points = 4
+    print("\nStart Clustering for CURE...")
+    number_cluster = v
+    number_represent_points = 10
+    # number_cluster = input("number_cluster=")
+    # number_represent_points = input("number_present_points=")
+
+    print("Parameters: ")
+    print("number_cluster=" + str(number_cluster))
+    print("number_present_points=" + str(number_represent_points))
+
     compression = 0.3
+    # Coefficient defines level of shrinking of representation points \
+    #   toward the mean of the new created cluster after merging on each step.
+    # Usually it destributed from 0 to 1
+    print("compression=" + str(compression))
+
     cure_instance = cure(data=X,
-                         number_cluster=v,
+                         number_cluster=number_cluster,
                          number_represent_points=number_represent_points,
                          compression=compression)
+
     cure_instance.process()
-
-    clusters = cure_instance.get_clusters()  # 每个簇，各簇包含的数据点索引号in X
-    print("clusters: ")
+    clusters = cure_instance.get_clusters()
     print(clusters)
-    print(len(clusters))
 
-    # use cluster to get labels
+    # create cluster labels for all points
     cluster_labels = [None] * len(X)
-
     for idx in range(len(clusters)):
         for pts in clusters[idx]:
             cluster_labels[pts] = idx
-    print("cluster_labels: ")
     print(cluster_labels)
-    print(np.unique(cluster_labels))
-    # 以label中每个簇第一次出现的位置定为center的索引
+    # print(cluster_labels)
+    # print(len(cluster_labels))
+    # 以label中每个簇最早出现的位置定为center的索引
+    num_cluster = len(np.unique(cluster_labels))
     cluster_centers = []
-    for idx in np.unique(cluster_labels):
-        pos = list(cluster_labels).index(idx)
-        # print(pos)
-        cluster_centers.append(X[pos])
-    print("cluster_centers: ")
-    print(cluster_centers)
-    print(len(cluster_centers))
-    # 或以clusters中每个簇第一个索引作为center的索引
+    # for idx in range(num_cluster):
+    #     pos = list(cluster_labels).index(idx)
+    #     cluster_centers.append(X[pos])
 
+    representors = cure_instance.get_representors()  # [[[x,y]],[[x,y]]]
+    for i in representors:
+        cluster_centers.append(i[0])
+    print(cluster_centers)
+
+    print("number of clusters:" + str(len(np.unique(cluster_labels))))
+
+    # X = readfile()
+    # v = 32
+    # number_represent_points = 4
+    # compression = 0.3
+    # cure_instance = cure(data=X,
+    #                      number_cluster=v,
+    #                      number_represent_points=number_represent_points,
+    #                      compression=compression)
+    # cure_instance.process()
+    #
+    # clusters = cure_instance.get_clusters()  # 每个簇，各簇包含的数据点索引号in X
+    # print("clusters: ")
+    # print(clusters)
+    # print(len(clusters))
+    #
+    # # use cluster to get labels
+    # cluster_labels = [None] * len(X)
+    #
+    # for idx in range(len(clusters)):
+    #     for pts in clusters[idx]:
+    #         cluster_labels[pts] = idx
+    # print("cluster_labels: ")
+    # print(cluster_labels)
+    # print(np.unique(cluster_labels))
+    # # 以label中每个簇第一次出现的位置定为center的索引
+    # cluster_centers = []
+    # for idx in np.unique(cluster_labels):
+    #     pos = list(cluster_labels).index(idx)
+    #     # print(pos)
+    #     cluster_centers.append(X[pos])
+    # print("cluster_centers: ")
+    # print(cluster_centers)
+    # print(len(cluster_centers))
+    # # 或以clusters中每个簇第一个索引作为center的索引
+    print(cluster_labels)
 
     sil_score = metrics.silhouette_score(X, cluster_labels, metric='euclidean')
     print("Silhouette Coefficient: " + str(sil_score))
@@ -441,15 +496,15 @@ def test_input(argv):
     test(cluster_mode)
 
 
-def draw_raw():
-    X = readfile()
-    x = []
-    y = []
-    for pts in X:
-        x.append(pts[0])
-        y.append(pts[1])
-    plt.scatter(x, y, alpha=0.5)
-    plt.show()
+# def draw_raw():
+#     X = readfile(filename='pandas_to_csv_X_40lines.csv')
+#     x = []
+#     y = []
+#     for pts in X:
+#         x.append(pts[0])
+#         y.append(pts[1])
+#     plt.scatter(x, y, alpha=0.5)
+#     plt.show()
 
 
 def draw_plot(data, labels, centers):
@@ -535,11 +590,11 @@ if __name__ == '__main__':
     # kmeans() # ok
     # meanshift()  # ok
     # affinitypropagation()  # ok
-    # draw_raw()
+    draw_raw()
     # print("")
     # compute_dist()
 
-    dbscan()  # ok
+    # dbscan()  # ok
     # optics()  # ok
     # test_data_format()
     # clustering_kmedoids()  # ok

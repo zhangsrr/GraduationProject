@@ -108,7 +108,7 @@ class StreamlinesSegment(object):
 
             # 基于distant_typeid=2（曼哈顿距离）计算不相似度.
             # 还需要测不同的distant_typeid的计算结果
-            dissimilarity_matrix, prototype_index = t.calculate_main_streamline_index(cnt, distant_typeid=2)
+            dissimilarity_matrix, prototype_index = t.calculate_main_streamline_index(cnt, distant_typeid=0)
             # 基于distant_typeid = 3（切比雪夫距离）计算不相似度.
             # 基于distant_typeid = 4（夹角余弦距离）计算不相似度.
             # 基于distant_typeid = 5（汉明距离）计算不相似度.

@@ -10,11 +10,11 @@ step 1. 流线分段
 import numpy as np
 from backend.stream_space_curve import StreamSpaceCurve
 from backend.pca import pca
-from backend.clustering_validity_measurement import MyValidity
 from backend.clustering_validity import clustering_validity_analysis
 from backend.helper_function import output_time, compute_euclidean
 
 from sklearn.cluster import KMeans, DBSCAN, OPTICS, MeanShift, AffinityPropagation, estimate_bandwidth
+from sklearn.decomposition import PCA
 from pyclustering.cluster.cure import cure
 from pyclustering.cluster.kmedoids import kmedoids
 from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
@@ -31,9 +31,12 @@ from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 import sys
+from sklearn.manifold import TSNE
+
 np.set_printoptions(threshold=sys.maxsize)
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+device = 'cpu'
 
 sel_feature = [
     "curvature",  # 曲率
@@ -69,6 +72,9 @@ class SegmentTokenizer(object):
         # 流线的词向量.
         self.unique_heat_vectors_dictionary = [] # 独热向量词典. one-hot 符合该特征，则值为1
         self.all_line_vocabulary_vectors = dict() # 流线的词向量.
+        # 为了流线聚类
+        self.all_line_vocabulary_kdim_for_cluster = np.array([])
+        self.all_streamlines_cluster_id = []  # 各条流线所属的簇
         # 量化的聚类度量指标
         # self.silhouette_coefficient = .0
         # self.db_index = .0
@@ -87,7 +93,10 @@ class SegmentTokenizer(object):
             raise("The cluster mode is None.")
         # self.test_torch()
         # 计算流线各点的特征值.
+
         self.get_all_point_features_from_line()
+        # print(self.all_point_features)
+        # exit()
         # 根据特征值对流线进行分段. sel_feature[0]曲率，分段只能依靠一个特征值进行分段？
         self.segment_all_lines(sel_feature[0], n_segment=50) #【注】此处的n_segment应该由外部主函数传入. 一般取50-100足够
         # 计算流线分段的特征向量.
@@ -99,6 +108,62 @@ class SegmentTokenizer(object):
         # 生成流线的词向量表达.
         print("Start generate streamline word vector: " + output_time() + '\n')
         self.generate_streamlined_word_vector_expressions(v=32)
+        # 对流线聚类
+        self.generate_cluster_for_streamlines(distant_typeid=2, v=32)
+        # 聚类后的流线着色 可视化
+        # 如果流线很密集，需要再压缩流场，跳到tool
+
+    # 这里用不同的聚类算法
+    def generate_cluster_for_streamlines(self, distant_typeid=2, v=32):
+        # 应用2：流线聚类
+        # 根据流线的不相似度矩阵做聚类
+        # 先降维
+        dissimilarity_matrix = self.__calculate_dissimilarity_matrix(distant_typeid=distant_typeid)
+        # print("Start T-SNE reduce dimension: " + output_time())
+        # ts = TSNE(n_components=2, init='pca')
+        # ts.fit_transform(dissimilarity_matrix)
+        # embedded = ts.embedding_
+        embedded = dissimilarity_matrix
+        self.all_line_vocabulary_kdim_for_cluster = np.array(embedded)
+        # print("Finish T-SNE reduce dimension and Start Clustering: " + output_time())
+        # 根据embedded做聚类
+        X = embedded
+        cluster_labels, cluster_centers = self.__start_clustering(cluster_mode=self.cluster_mode, X=X, v=v)
+        self.all_streamlines_cluster_id = cluster_labels
+        print(cluster_labels)
+
+        # filename1 = 'TSNE_pandas_to_csv_cluster_labels_' + self.cluster_mode + str(len(self.streamlines_lines_index_data)) + '.csv'
+        # df2 = pd.DataFrame(cluster_labels)
+        # df2.to_csv(filename1, header=False, index=False)
+        #
+        # filename2 = 'TSNE_pandas_to_csv_cluster_centers_' + self.cluster_mode +str(len(self.streamlines_lines_index_data))+ '.csv'
+        # df3 = pd.DataFrame(cluster_centers)
+        # df3.to_csv(filename2, header=False, index=False)
+
+        print("\nStart Calculating Clustering Validity Metrics: " + output_time())
+        my_validity = clustering_validity_analysis(data=X, labels=cluster_labels, centers=cluster_centers)
+
+        # 1. Silhouette Coefficient
+        # The score is higher when clusters are dense and well separated.
+        sil_score = my_validity.Silhouette_Coefficient()
+        print("Silhouette Coefficient: " + str(sil_score) + "... Time: " + output_time())
+
+        # 2. Davies-Bouldin Index
+        # Values closer to zero indicate a better partition.
+        db_index_score = my_validity.Davies_Bouldin_Index()
+        print("Davies-Bouldin Index: " + str(db_index_score) + "... Time: " + output_time())
+
+        # 5. The Xie-Beni index, a measure of compactness
+        XB_index = my_validity.Xie_Beni()
+        print("The Xie-Beni index: " + str(XB_index) + "... Time: " + output_time())
+
+        # 3. Hubert's gamma statistics
+        # hubert_gamma_score = my_validity.Hubert_Gamma_Score()
+        # print("Hubert Gamma Score: " + str(hubert_gamma_score) + "... Time: " + output_time())
+
+        # 4. PBM_index
+        # pbm_index = my_validity.PBM_index()
+        # print("The PBM index: "+str(pbm_index)+"... Time: "+output_time())
 
     def calculate_main_streamline_index(self, cnt, distant_typeid=0):
         """应用1：流场压缩(pca+聚类).
@@ -138,6 +203,7 @@ class SegmentTokenizer(object):
             for index_y, vocabulary_y in self.all_line_vocabulary_vectors.items():
                 row_data.append(self.__dissim(np.array(vocabulary_x), np.array(vocabulary_y), distant_typeid))
             dissimilarity_matrix.append(np.array(row_data))
+            # print(dissimilarity_matrix)  # lines * lines, 40 * 40 矩阵
         return np.array(dissimilarity_matrix)
 
     def __dissim(self, x, y, distant_typeid=0):
@@ -146,10 +212,9 @@ class SegmentTokenizer(object):
         y_tensor = torch.from_numpy(y).to(device)
         if distant_typeid == 0:  # 欧几里得距离.
             # distance = np.linalg.norm(x-y)
-            distance = LA.norm(x_tensor - y_tensor)
+            distance = LA.norm(x_tensor - y_tensor).cpu()
         elif distant_typeid == 1:  # 余弦距离.
-            # distance = 1 - np.dot(x,y)/(np.linalg.norm(x)*np.linalg.norm(y))
-            distance = 1 - torch.dot(x_tensor, y_tensor) / (LA.norm(x_tensor) * LA.norm(y_tensor)).cpu()
+            distance = 1 - np.dot(x,y)/(np.linalg.norm(x)*np.linalg.norm(y))
         elif distant_typeid == 2:  # 曼哈顿距离.
             # distance = np.linalg.norm(x-y,ord=1)
             distance = LA.norm(x_tensor-y_tensor, ord=1).cpu()
@@ -311,101 +376,77 @@ class SegmentTokenizer(object):
 
         return segment_vector
 
-    # 这里用不同的聚类算法
     def generate_vocabulary_based_on_streamline_segmentation(self, k=2, v=32):
         # cost long time
-
         print("generate_vocabulary_based_on_streamline_segmentation...")
         # 1.pca主成分分析（降到k维）
         # print("self.segment_feature_vectors.items():")
         # print(self.segment_feature_vectors.items())
-        print("Start PCA reduce dimension: " + output_time())
+
+        # print("Start PCA reduce dimension: " + output_time())
+        # for line, value in tqdm(self.segment_feature_vectors.items()):
+        #     # print("line, value: " + str(line))
+        #     # print(value)
+        #     # segment_feature_vectors是dict, line就是key
+        #     XMat = np.matrix(value)
+        #     finalData, reconMat = pca(XMat, k)
+        #     self.segment_feature_vectors_kdim[line] = np.array(finalData)
+        # # 2. 聚类
+        # # 每一种聚类方法最后只需保留cluster_labels和cluster_centers
+        # # cluster_labels = cluster_method.labels_ or cluster_method.predict(new_dataset)
+        # # cluster_centers = cluster_method.cluster_centers_
+        # #
+        # # streamlines_segment_token.py:210: ComplexWarning: Casting complex values to real discards the imaginary part
+        # #   for pt in value], dtype="float64")
+        # # 此时self.segment_feature_vectors_kdim都降成了k维，即pt均为k维
+        # print("Finish PCA reduce dimension and Start Clustering: " + output_time())
+
+        print("Start T-SNE reduce dimension: " + output_time())
+        # 先T-SNE+KMeans
+        segment_number = 0
         for line, value in tqdm(self.segment_feature_vectors.items()):
-            # print("line, value: " + str(line))
-            # print(value)
-            # segment_feature_vectors是dict, line就是key
-            XMat = np.matrix(value)
-            finalData, reconMat = pca(XMat, k)
-            # plotBestFit(finalData, reconMat)
-            self.segment_feature_vectors_kdim[line] = np.array(finalData)
-        # print("self.segment_feature_vectors_kdim: ")
-        # print(self.segment_feature_vectors_kdim)
-        # 2. 聚类
-        # 每一种聚类方法最后只需保留cluster_labels和cluster_centers
-        # cluster_labels = cluster_method.labels_ or cluster_method.predict(new_dataset)
-        # cluster_centers = cluster_method.cluster_centers_
+            # value是分段的特征向量，一条流线有n段
+            # print(value)  # N*12, 二维数组
+            segment_number = segment_number + len(value)
+            XMat = np.array(value)
+            ts = TSNE(n_components=2, init='pca')
+            ts.fit_transform(XMat)
+            embedded = ts.embedding_  # 各分段降维后
+            self.segment_feature_vectors_kdim[line] = np.array(embedded)
+        print("Finish T-SNE reduce dimension and Start Clustering: " + output_time())
 
-        # streamlines_segment_token.py:210: ComplexWarning: Casting complex values to real discards the imaginary part
-        #   for pt in value], dtype="float64")
-        # 此时self.segment_feature_vectors_kdim都降成了k维，即pt均为k维
-        print("Finish PCA reduce dimension and Start Clustering: " + output_time())
         X = np.array([pt for line, value in self.segment_feature_vectors_kdim.items() for pt in value], dtype="float64")  # 2668
+        # X的长度就是总的分段数
+        # 所以这里是在对分段聚类？
 
-        cluster_labels, cluster_centers = self.start_clustering(X=X, v=v)
-        print(cluster_centers)
+        cluster_labels, cluster_centers = self.__start_clustering(cluster_mode='KMeans', X=X, v=v)
+        # print(len(cluster_labels))  # == point size
+        # print(cluster_centers)
+        #
+        # df = pd.DataFrame(X)
+        # filename0 = 'pandas_to_csv_X_'+str(len(self.streamlines_lines_index_data))+'lines.csv'
+        # df.to_csv(filename0, header=False, index=False)
+        #
+        # filename1 = 'pandas_to_csv_cluster_labels_' + self.cluster_mode + str(len(self.streamlines_lines_index_data)) + '.csv'
+        # df2 = pd.DataFrame(cluster_labels)
+        # df2.to_csv(filename1, header=False, index=False)
+        #
+        # filename2 = 'pandas_to_csv_cluster_centers_' + self.cluster_mode +str(len(self.streamlines_lines_index_data))+ '.csv'
+        # df3 = pd.DataFrame(cluster_centers)
+        # df3.to_csv(filename2, header=False, index=False)
 
-        df = pd.DataFrame(X)
-        df.to_csv('pandas_to_csv_X.csv', header=False, index=False)
 
         # 2.1 KMeans聚类(k=v)  ok
         # doing clustering, get cluster_labels and cluster_centers(some clustering algorithms)
         # doing metrics
-        print("\nStart Calculating Clustering Validity Metrics: " + output_time())
-
-        # validity_instance = validation(data=X, labels=cluster_labels, centers=cluster_centers)
-        # my_validity_test = MyValidity(data=X, labels=cluster_labels)
-        my_validity_test = clustering_validity_analysis(data=X, labels=cluster_labels, centers=cluster_centers)
-
-        # 1. Silhouette Coefficient
-        # The score is higher when clusters are dense and well separated.
-        # self.silhouette_coefficient = self.validity_measurement_silhouette(data=X, cluster_labels=cluster_labels)
-
-        sil_score = my_validity_test.Silhouette_Coefficient()
-        # sil_score = validity_instance.silhouette()
-        print("Silhouette Coefficient: " + str(sil_score) + "... Time: " + output_time())
-
-        # 2. Davies-Bouldin Index
-        # Values closer to zero indicate a better partition.
-        # self.db_index = self.validity_measurement_db_index(data=X, cluster_labels=cluster_labels)
-
-        # db_index_score = validity_instance.Davies_Bouldin()
-        db_index_score = my_validity_test.Davies_Bouldin_Index()
-        print("Davies-Bouldin Index: " + str(db_index_score) + "... Time: " + output_time())
-
-        # 3. Hubert's gamma statistics
-        # hubert_gamma_score = validity_instance.Baker_Hubert_Gamma()
-        hubert_gamma_score = my_validity_test.Hubert_Gamma_Score()
-        print("Hubert Gamma Score: " + str(hubert_gamma_score) + "... Time: " + output_time())
-
-        # 4. Normalized validity measurement
-        # modified_hubert_score = validity_instance.modified_hubert_t()
-        # print("Normalized validity statistic: " + str(modified_hubert_score) + "... Time: " + output_time())
-
-        # 5. PBM_index
-        pbm_index = my_validity_test.PBM_index()
-        print("The PBM index: "+str(pbm_index)+"... Time: "+output_time())
-
         self.dictionary = self.__vectors2words(cluster_centers)  # 词典
         print("\nlength of self.dictionary:")
         print(len(self.dictionary))
-        # print(self.dictionary)
-        # exit()
 
         no = 0
-        # print("Dictionary: ")
-        # print(self.dictionary)
-        # print(len(self.dictionary))
 
         pd3 = pd.DataFrame(self.dictionary)
-        pd3.to_csv('X_dict.csv', header=False, index=False)
-
-        # print("Segment_feature_vectors_kdim.items(): ")
-        # print(self.segment_feature_vectors_kdim.items())
-        # print(type(self.segment_feature_vectors_kdim))
-        # print(len(self.segment_feature_vectors_kdim))  # 2080
-
-        # pd2 = pd.DataFrame(self.segment_feature_vectors_kdim.items())
-        # pd2.to_csv('segment_kdim_items.csv', header=False, index=False)
+        pd3.to_csv('X_dictionary.csv', header=False, index=False)
 
         # generate words and vocabulary
         for line, value in self.segment_feature_vectors_kdim.items():
@@ -414,12 +455,14 @@ class SegmentTokenizer(object):
             words_index = []
             # print("line, value: ")
             # print(line, value)
-            for seg in value:
+            for seg in value:  # 循环次数是流线line所包含的分段数
                 words_index.append(cluster_labels[no])  # no is added from 0 to numbers of total points
+                # words_index 拼接的是第no个分段所在的簇号
                 no += 1
                 # print("words_index: " + str(no) + " : " + str(seg))  # seg is the exact point coordinate
                 # print(words_index) # len(words_index) is up to the len(streamline's points)
             self.segment_vocabularys_index[line] = words_index  # words_index's length is different
+            # 得到的是流线line每条分段的词, len(labels)就是分段词汇数
 
     def __vectors2words(self, vecs):
         dictionary = []
@@ -450,18 +493,9 @@ class SegmentTokenizer(object):
         # 2.复现如下的算法计算流线的词向量表达.
         # 词向量表达就是矩阵乘法运算
         # ont-hot矩阵N*1，S矩阵N*N，词向量表达ret矩阵=S*one-hot=N*1矩阵，其实就是S中的某一行向量
-        # len_segment_vocabulary_index = len(self.segment_vocabularys_index.items())
-        # process_bar = [(len_segment_vocabulary_index-1)//25 * i for i in range(26)]
 
         for index, streamline in tqdm(self.segment_vocabularys_index.items()):
-            # segment_vocabularys_index.items()是index: [pts.x_pts.y_]……这样的表达形式
-            # if index in process_bar:
-            #     print("Processing " + str(index) + " streamline... Time: " + output_time())
-            #     s_perc = "|"
-            #     s = "##"
-            #     s_perc += s * process_bar.index(index)  # s_perc = 几倍的s ##########
-            #     print(s_perc, int(process_bar.index(index) / (len(process_bar) - 1) * 100), "%")
-
+            # segment_vocabularys_index.items()是index: []……这样的表达形式
             S = np.array([0 for k in range(v*v)])  # v行v列的矩阵
             S_tensor = torch.FloatTensor(S)  # because torch.mm() is not applicable for LongTensor
             S_tensor = S_tensor.to(device)
@@ -507,7 +541,9 @@ class SegmentTokenizer(object):
                         # print(S)
                         # print("type of S: " + str(type(S)))
             S = S_tensor.to('cpu').numpy()
-            self.all_line_vocabulary_vectors[index] = S
+            self.all_line_vocabulary_vectors[index] = S  # S是一维数组
+            # 得到每条流线的词向量，然后根据词向量可以计算流线之间的相似度
+            # print(S)  # 有很多0
 
     def calculate_epsilon_for_density(self):
         data = self.streamlines_vertexs_data
@@ -533,69 +569,35 @@ class SegmentTokenizer(object):
         eps = (eps_index[0]) / len(data)
         return eps[0]
 
-    def test_torch(self):
-        # 存的streamlines
-        train_set_idx = []
-        for line in self.streamlines_lines_index_data:
-            for pts_index in line:
-                train_set_idx.append(pts_index)
-
-        train_set = []
-        for idx in train_set_idx:
-            pts = self.streamlines_vertexs_data[idx]
-            train_set.append(pts)
-
-        # pca 降维
-        reduced_train, recon_data = pca(train_set, 2)
-        reduced_train = np.squeeze(np.asarray(reduced_train))
-        train_set_size = int(len(reduced_train)*0.9)
-        valid_set_size = len(reduced_train) - train_set_size
-        valid_set = []
-        idx_array = np.random.randint(low=0, high=len(reduced_train), size=valid_set_size)
-        for i in idx_array:
-            valid_set.append(reduced_train[i])
-        valid_set = torch.tensor(valid_set).to(device)
-
-        # dist_need = cdist(valid_set, valid_set)  # 每一点与其他点的欧氏距离
-        # print(dist_need)
-        print(output_time())
-        dist_need = compute_euclidean(x_tensor=valid_set, y_tensor=valid_set)
-        # exit()
-        # print(dist_need)
-        # print(dist_need.cpu())  # tensor
-        print(output_time())
-
-        exit()
-
-    def start_clustering(self, X, v):
-        if (self.cluster_mode == 'KMeans'):
-            cluster_labels, cluster_centers = self.clustering_KMeans(X=X, v=v)
+    def __start_clustering(self, cluster_mode, X, v):
+        if (cluster_mode == 'KMeans'):
+            cluster_labels, cluster_centers = self.__clustering_KMeans(X=X, v=v)
 
         # 以下为补充的聚类方法（6种）
 
         # 2.2 KMedoids  ok
-        elif (self.cluster_mode == 'KMedoids'):
-            cluster_labels, cluster_centers = self.clustering_KMedoids(X=X, v=v)
+        elif (cluster_mode == 'KMedoids'):
+            cluster_labels, cluster_centers = self.__clustering_KMedoids(X=X, v=v)
 
         # 2.3 DBSCAN ok
-        elif (self.cluster_mode == 'DBSCAN'):
-            cluster_labels, cluster_centers = self.clustering_DBSCAN(X=X)
+        elif (cluster_mode == 'DBSCAN'):
+            cluster_labels, cluster_centers = self.__clustering_DBSCAN(X=X)
 
         # 2.4 OPTICS ok 但聚类效果不好
-        elif (self.cluster_mode == 'OPTICS'):
-            cluster_labels, cluster_centers = self.clustering_OPTICS(X=X)
+        elif (cluster_mode == 'OPTICS'):
+            cluster_labels, cluster_centers = self.__clustering_OPTICS(X=X)
 
         # 2.5 MeanShift ok
-        elif (self.cluster_mode == 'MeanShift'):
-            cluster_labels, cluster_centers = self.clustering_MeanShift(X=X)
+        elif (cluster_mode == 'MeanShift'):
+            cluster_labels, cluster_centers = self.__clustering_MeanShift(X=X)
 
         # 2.6 AP ok
-        elif (self.cluster_mode == 'AffinityPropagation' or self.cluster_mode == 'AP'):
-            cluster_labels, cluster_centers = self.clustering_AP(X=X)
+        elif (cluster_mode == 'AffinityPropagation' or self.cluster_mode == 'AP'):
+            cluster_labels, cluster_centers = self.__clustering_AP(X=X)
 
         # 2.7 CURE ok
-        elif (self.cluster_mode == 'CURE'):
-            cluster_labels, cluster_centers = self.clustering_CURE(X=X, v=v)
+        elif (cluster_mode == 'CURE'):
+            cluster_labels, cluster_centers = self.__clustering_CURE(X=X, v=v)
 
         else:
             print("Error Clustering Method...The Program Will Exit Soon...")
@@ -604,7 +606,7 @@ class SegmentTokenizer(object):
         print("Finish Clustering: " + output_time())
         return cluster_labels, cluster_centers
 
-    def clustering_KMeans(self, X, v=32):
+    def __clustering_KMeans(self, X, v=32):
         random_state = 28
         print("\nStart Clustering for KMeans to " + str(v) + " clusters, beginning with " + str(
             random_state) + " centroids...")
@@ -618,7 +620,7 @@ class SegmentTokenizer(object):
         print("number of clusters:" + str(len(np.unique(cluster_labels))))
         return cluster_labels, cluster_centers
 
-    def clustering_KMedoids(self, X, v=32):
+    def __clustering_KMedoids(self, X, v=32):
         # error when encountering big dataset, it will stuck
         initial_medoids = kmeans_plusplus_initializer(X, v).initialize(return_index=True)
         print("\nInitial Medoids: ")
@@ -643,7 +645,7 @@ class SegmentTokenizer(object):
         print("number of clusters:" + str(len(np.unique(cluster_labels))))
         return cluster_labels, cluster_centers
 
-    def clustering_DBSCAN(self, X):
+    def __clustering_DBSCAN(self, X):
 
         # 这两个问题已解决4.29
         # Q1: ValueError: Found input variables with inconsistent numbers of samples: [1594, 1017]
@@ -694,7 +696,7 @@ class SegmentTokenizer(object):
         # Question: DBSCAN得到的labels为-1的点应该要从X中去除，那么数据长度就会发生变化，可能对不上dictionary
         return cluster_labels, cluster_centers
 
-    def clustering_OPTICS(self, X):
+    def __clustering_OPTICS(self, X):
         print("\nStart Clustering for OPTICS...")
         # min_samples=8, xi=0.15, min_cluster_size=10 这样的参数设置对于原始流场来说，产生的簇太多了，有835个，sil_co分数为负
 
@@ -750,7 +752,7 @@ class SegmentTokenizer(object):
 
         return cluster_labels, cluster_centers
 
-    def clustering_MeanShift(self, X):
+    def __clustering_MeanShift(self, X):
         print("\nStart Clustering for MeanShift...")
         # time-complexity O(n^2), n is the number of points
         print("Parameters for estimating bandwidth: ")
@@ -773,12 +775,12 @@ class SegmentTokenizer(object):
         print("number of clusters:" + str(len(np.unique(cluster_labels))))
         return cluster_labels, cluster_centers
 
-    def clustering_AP(self, X):
+    def __clustering_AP(self, X):
         print("\nStart Clustering for AffinityPropagation...")
         print("Parameters: ")
-        damping = 0.85
-        preference = -1000  # smaller, clusters less
-        max_iter = 2000
+        damping = 0.7
+        preference = -200  # smaller, clusters less
+        max_iter = 1000
 
         # damping = input("damping= (range from 0 to 1, float)\n")
         # preference = input("preference= (can be negative)\n")
@@ -788,7 +790,7 @@ class SegmentTokenizer(object):
         print("preference=" + str(preference))
         print("max_iter=" + str(max_iter))
 
-        ap_instance = AffinityPropagation(random_state=0,
+        ap_instance = AffinityPropagation(random_state=28,
                                           verbose=True,
                                           max_iter=max_iter,
                                           damping=damping,
@@ -805,7 +807,7 @@ class SegmentTokenizer(object):
 
         return cluster_labels, cluster_centers
 
-    def clustering_CURE(self, X, v):
+    def __clustering_CURE(self, X, v):
         print("\nStart Clustering for CURE...")
         number_cluster = v
         number_represent_points = 10
@@ -835,13 +837,25 @@ class SegmentTokenizer(object):
             for pts in clusters[idx]:
                 cluster_labels[pts] = idx
         # print(cluster_labels)
+        # print(cluster_labels)
         # print(len(cluster_labels))
         # 以label中每个簇最早出现的位置定为center的索引
+
         cluster_centers = []
         for idx in np.unique(cluster_labels):
             pos = list(cluster_labels).index(idx)
             cluster_centers.append(X[pos])
+        # representors = cure_instance.get_representors()  # [[[x,y]],[[x,y]]]
+        # for i in representors:
+        #     cluster_centers.append(i[0])
+        # print(cluster_centers)
 
         print("number of clusters:" + str(len(np.unique(cluster_labels))))
+        # print(cluster_labels)
+        # print(np.unique(cluster_labels))
 
         return cluster_labels, cluster_centers
+
+    def test_tsne(self):
+
+        pass

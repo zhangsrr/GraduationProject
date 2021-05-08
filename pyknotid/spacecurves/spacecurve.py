@@ -1125,7 +1125,6 @@ class SpaceCurve(object):
         angles = np.arccos(np.sum(segments * segments_2, axis=1) / (mags * mags_2))
         return np.sum(angles)
 
-
     def torsions(self, signed=False, closed=True):
         '''Returns torsions at each vertex.'''
 

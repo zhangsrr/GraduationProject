@@ -53,5 +53,10 @@ def test_tqdm():
     # df.groupby(0).progress_apply(lambda x: x ** 2)
 
 
-# if __name__ == '__main__':
+def test():
+    List = [1,2,3,4]
+    print(List[-1])
+
+if __name__ == '__main__':
 #     test_tqdm()
+    test()
