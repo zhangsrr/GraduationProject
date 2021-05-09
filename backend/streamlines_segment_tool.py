@@ -9,6 +9,10 @@ from backend.streamlines_segment_token import SegmentTokenizer
 import pandas as pd
 import sys
 
+import matplotlib.pyplot as plt
+from matplotlib.colors import rgb2hex
+from mpl_toolkits.mplot3d import Axes3D
+
 np.set_printoptions(threshold=sys.maxsize)
 
 
@@ -109,6 +113,28 @@ class StreamlinesSegment(object):
             # 基于distant_typeid=2（曼哈顿距离）计算不相似度.
             # 还需要测不同的distant_typeid的计算结果
             dissimilarity_matrix, prototype_index = t.calculate_main_streamline_index(cnt, distant_typeid=0)
+            # 得到不相似度矩阵，压缩流场
+            labels = t.all_streamlines_cluster_labels  # Series
+            series_pd1 = pd.Series(labels)
+            labels_to_draw_filename = 'labels_to_draw_'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.csv'
+            series_pd1.to_csv(labels_to_draw_filename, header=False, index=False)
+
+            series_pd2 = pd.Series(prototype_index)
+            prototype_index_to_draw_filename = 'prototype_index_to_draw_'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.csv'
+            series_pd2.to_csv(prototype_index_to_draw_filename, header=False, index=False)
+            # 只可视化剩下的流线
+
+            # df_pd3 = pd.DataFrame(self.streamlines_lines_index_data)
+            lines_index_filename = 'streamlines_lines_index_to_draw'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.txt'
+            # df_pd3.to_csv(lines_index_filename, header=False, index=False)
+            np.savetxt(fname=lines_index_filename, X=self.streamlines_lines_index_data, fmt='%s', delimiter=',')
+
+            df_pd4 = pd.DataFrame(self.streamlines_vertexs_data)
+            streamlines_vertexs_data_filename = 'streamlines_vertexs_data_to_draw'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.csv'
+            df_pd4.to_csv(streamlines_vertexs_data_filename, header=False, index=False)
+
+            self.draw_3d(labels=labels, prototype_index=prototype_index)
+
             # 基于distant_typeid = 3（切比雪夫距离）计算不相似度.
             # 基于distant_typeid = 4（夹角余弦距离）计算不相似度.
             # 基于distant_typeid = 5（汉明距离）计算不相似度.
@@ -151,6 +177,98 @@ class StreamlinesSegment(object):
 
         # error: could not broadcast input array from shape (2080,1) into shape (2080)
         # np.savetxt("mul_dissimilarity_matrix.txt", self.mul_dissimilarity_matrix, fmt='%f', delimiter=',')
+
+    def draw_3d(self, labels, prototype_index):
+        remainder_labels = []
+        for idx in prototype_index:
+            l = labels[idx]
+            remainder_labels.append(l)
+        remainder_labels = list(set(remainder_labels))
+        print("remainder line labels")
+        print(remainder_labels)  # [19, 30, 22, 14]
+        colors_tsne = tuple(
+            [(np.random.random(), np.random.random(), np.random.random()) for i in
+             range(len(remainder_labels))])
+        colors_tsne = [rgb2hex(x) for x in colors_tsne]  # from  matplotlib.colors import  rgb2hex
+
+        # pts_data = []
+        # label_for_pts = []
+        print("selected streamlines indexes")
+        print(prototype_index)  # [ 49 186 187 188 189 190 191 192 193 194 195 196 197 198 199]
+        # for line_idx in prototype_index:
+        #     for pts_idx in self.streamlines_lines_index_data[line_idx]:  # pts_idx也是索引
+        #         pts_data.append(self.streamlines_vertexs_data[pts_idx])
+        #         label_for_pts.append(labels[line_idx])
+        # 得到所有流线的所有点所在标签
+        fig = plt.figure(dpi=80, figsize=(8,6))
+        # pts_data = np.array(pts_data)
+        ax1 = plt.axes(projection='3d')
+
+        # ax1 = fig.add_subplot(111, projection='3d')
+        # ax2 = fig.add_subplot(122, projection='3d')
+
+
+        ax1.set_xlabel('x')
+        ax1.set_ylabel('y')
+        ax1.set_zlabel('z')
+        # ax1.set_title('Line Plot')
+
+        # ax2.set_xlabel('x')
+        # ax2.set_ylabel('y')
+        # ax2.set_zlabel('z')
+        # ax2.set_title('Scatter Plot')
+        #
+        # ax.set_xlabel('x')
+        # ax.set_ylabel('y')
+        # ax.set_zlabel('z')
+
+        # OUR ONE LINER ADDED HERE:
+        ax1.get_proj = lambda: np.dot(Axes3D.get_proj(ax1), np.diag([1, 0.3, 1, 1]))
+
+        # 给每条流线分配颜色
+        color_for_line = dict()  # line_idx : line_label
+        # 已分配好颜色的label，存放的是label
+        detached_label_color = dict()  # label : color
+        color_pos = 0
+        for line_idx in prototype_index:
+            line_label = labels[line_idx]  # 该条流线的标签
+            # 每个label一个颜色
+            # print(line_label)
+            if not (line_label in detached_label_color):
+                # print(color_pos)
+                # print(detached_label_color.items())
+                detached_label_color[line_label] = colors_tsne[color_pos]
+                color_pos = color_pos+1
+            color_for_line[line_idx] = detached_label_color[line_label]
+
+        for line_idx in prototype_index:
+            points_xdata = []
+            points_ydata = []
+            points_zdata = []
+            for pts_idx in self.streamlines_lines_index_data[line_idx]:
+                one_point = self.streamlines_vertexs_data[pts_idx]
+                points_xdata.append(one_point[0])
+                points_ydata.append(one_point[1])
+                points_zdata.append(one_point[2])
+            # print(points_xdata)
+            # print(len(points_xdata))
+            ax1.plot(points_xdata, points_ydata, points_zdata, c=color_for_line[line_idx])
+
+            # ax1.plot(np.array(points_xdata), np.array(points_ydata), np.array(points_ydata), c=color_for_line[line_idx], alpha=1)
+
+
+        # for i, color in zip(remainder_labels, colors_tsne):
+        #     # print(i)  # 19
+        #     need_idx = np.where(np.array(label_for_pts) == i)  # need_idx为什么是[None]
+        #     # print(need_idx)
+        #
+        #     for idx in need_idx:
+        #         # print(idx)
+        #         # ax.plot3D(pts_data[idx, 0], pts_data[idx, 1], pts_data[idx, 2], c=color, alpha=0.5)
+        #         ax2.scatter3D(pts_data[idx, 0], pts_data[idx, 1], pts_data[idx, 2], c=color, alpha=1)
+        #         # print(pts_data[idx, 0], pts_data[idx, 1], pts_data[idx, 2])
+        plt.axis('off')
+        plt.show()
 
     def __load_streamlines_data_from_vtk_file(self, vtk_format_filename):
         """
@@ -198,7 +316,7 @@ class StreamlinesSegment(object):
             if len(points_index_list) >= 3:
                 lines_index_list.append(points_index_list)
                 self.line_map_real2formal[len(lines_index_list)-1] = i  # 只保留pts数大于3的流线
-        self.streamlines_lines_index_data = np.array(lines_index_list)
+        self.streamlines_lines_index_data = np.array(lines_index_list, dtype='object')
 
         # extract attributes data.
         attributes_data = self.polydata_input.GetPointData()

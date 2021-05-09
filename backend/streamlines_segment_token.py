@@ -11,7 +11,7 @@ import numpy as np
 from backend.stream_space_curve import StreamSpaceCurve
 from backend.pca import pca
 from backend.clustering_validity import clustering_validity_analysis
-from backend.helper_function import output_time, compute_euclidean
+from backend.helper_function import output_time
 
 from sklearn.cluster import KMeans, DBSCAN, OPTICS, MeanShift, AffinityPropagation, estimate_bandwidth
 from sklearn.decomposition import PCA
@@ -19,7 +19,6 @@ from pyclustering.cluster.cure import cure
 from pyclustering.cluster.kmedoids import kmedoids
 from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
 
-from openensembles.validation import validation
 import scipy.spatial.distance as dist
 import pandas as pd
 
@@ -29,9 +28,12 @@ from torch import linalg as LA
 from sklearn.neighbors import NearestNeighbors  # for computing epsilon, but time consuming large
 from tqdm import tqdm
 
-import matplotlib.pyplot as plt
 import sys
 from sklearn.manifold import TSNE
+
+import matplotlib.pyplot as plt
+from matplotlib.colors import rgb2hex
+from mpl_toolkits.mplot3d import Axes3D
 
 np.set_printoptions(threshold=sys.maxsize)
 
@@ -50,7 +52,7 @@ class SegmentTokenizer(object):
                  streamlines_vertexs_data,
                  streamlines_lines_index_data,
                  streamlines_attributes_data,
-                 cluster_mode = "KMeans"):
+                 cluster_mode="KMeans"):
         # original data.
         self.streamlines_vertexs_data = streamlines_vertexs_data
         self.streamlines_lines_index_data = streamlines_lines_index_data
@@ -74,7 +76,7 @@ class SegmentTokenizer(object):
         self.all_line_vocabulary_vectors = dict() # 流线的词向量.
         # 为了流线聚类
         self.all_line_vocabulary_kdim_for_cluster = np.array([])
-        self.all_streamlines_cluster_id = []  # 各条流线所属的簇
+        self.all_streamlines_cluster_labels = []  # 各条流线所属的簇
         # 量化的聚类度量指标
         # self.silhouette_coefficient = .0
         # self.db_index = .0
@@ -109,27 +111,30 @@ class SegmentTokenizer(object):
         print("Start generate streamline word vector: " + output_time() + '\n')
         self.generate_streamlined_word_vector_expressions(v=32)
         # 对流线聚类
-        self.generate_cluster_for_streamlines(distant_typeid=2, v=32)
+        self.generate_cluster_for_streamlines(distant_typeid=2, v=16)
         # 聚类后的流线着色 可视化
         # 如果流线很密集，需要再压缩流场，跳到tool
 
     # 这里用不同的聚类算法
-    def generate_cluster_for_streamlines(self, distant_typeid=2, v=32):
+    def generate_cluster_for_streamlines(self, distant_typeid, v=32):
         # 应用2：流线聚类
-        # 根据流线的不相似度矩阵做聚类
-        # 先降维
-        dissimilarity_matrix = self.__calculate_dissimilarity_matrix(distant_typeid=distant_typeid)
-        # print("Start T-SNE reduce dimension: " + output_time())
-        # ts = TSNE(n_components=2, init='pca')
-        # ts.fit_transform(dissimilarity_matrix)
-        # embedded = ts.embedding_
-        embedded = dissimilarity_matrix
+        # 对流线的词向量表达做聚类
+        XMat = []
+        for line, voca in self.all_line_vocabulary_vectors.items():
+            XMat.append(voca)
+
+        print("Start T-SNE reduce dimension: " + output_time())
+        # 先降维（不降维也可聚类？）
+        ts = TSNE(n_components=2, init='pca')
+        ts.fit_transform(XMat)
+        embedded = ts.embedding_
+
         self.all_line_vocabulary_kdim_for_cluster = np.array(embedded)
-        # print("Finish T-SNE reduce dimension and Start Clustering: " + output_time())
-        # 根据embedded做聚类
+        print("Finish T-SNE reduce dimension and Start Clustering: " + output_time())
+
         X = embedded
         cluster_labels, cluster_centers = self.__start_clustering(cluster_mode=self.cluster_mode, X=X, v=v)
-        self.all_streamlines_cluster_id = cluster_labels
+        self.all_streamlines_cluster_labels = cluster_labels
         print(cluster_labels)
 
         # filename1 = 'TSNE_pandas_to_csv_cluster_labels_' + self.cluster_mode + str(len(self.streamlines_lines_index_data)) + '.csv'
@@ -158,12 +163,23 @@ class SegmentTokenizer(object):
         print("The Xie-Beni index: " + str(XB_index) + "... Time: " + output_time())
 
         # 3. Hubert's gamma statistics
-        # hubert_gamma_score = my_validity.Hubert_Gamma_Score()
-        # print("Hubert Gamma Score: " + str(hubert_gamma_score) + "... Time: " + output_time())
+        hubert_gamma_score = my_validity.Hubert_Gamma_Score()
+        print("Hubert Gamma Score: " + str(hubert_gamma_score) + "... Time: " + output_time())
 
         # 4. PBM_index
         # pbm_index = my_validity.PBM_index()
         # print("The PBM index: "+str(pbm_index)+"... Time: "+output_time())
+
+    def draw_cluster_outcome(self):
+        # 绘制聚类后的流线
+        print(len(self.streamlines_lines_index_data))
+
+        colors_tsne = tuple(
+            [(np.random.random(), np.random.random(), np.random.random()) for i in
+             range(len(np.unique(self.all_streamlines_cluster_labels)) - 1)])
+        colors_tsne = [rgb2hex(x) for x in colors_tsne]  # from  matplotlib.colors import  rgb2hex
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
 
     def calculate_main_streamline_index(self, cnt, distant_typeid=0):
         """应用1：流场压缩(pca+聚类).
@@ -383,14 +399,14 @@ class SegmentTokenizer(object):
         # print("self.segment_feature_vectors.items():")
         # print(self.segment_feature_vectors.items())
 
-        # print("Start PCA reduce dimension: " + output_time())
-        # for line, value in tqdm(self.segment_feature_vectors.items()):
-        #     # print("line, value: " + str(line))
-        #     # print(value)
-        #     # segment_feature_vectors是dict, line就是key
-        #     XMat = np.matrix(value)
-        #     finalData, reconMat = pca(XMat, k)
-        #     self.segment_feature_vectors_kdim[line] = np.array(finalData)
+        print("Start PCA reduce dimension: " + output_time())
+        for line, value in tqdm(self.segment_feature_vectors.items()):
+            # print("line, value: " + str(line))
+            # print(value)
+            # segment_feature_vectors是dict, line就是key
+            XMat = np.matrix(value)
+            finalData, reconMat = pca(XMat, k)
+            self.segment_feature_vectors_kdim[line] = np.array(finalData)
         # # 2. 聚类
         # # 每一种聚类方法最后只需保留cluster_labels和cluster_centers
         # # cluster_labels = cluster_method.labels_ or cluster_method.predict(new_dataset)
@@ -401,19 +417,20 @@ class SegmentTokenizer(object):
         # # 此时self.segment_feature_vectors_kdim都降成了k维，即pt均为k维
         # print("Finish PCA reduce dimension and Start Clustering: " + output_time())
 
-        print("Start T-SNE reduce dimension: " + output_time())
-        # 先T-SNE+KMeans
-        segment_number = 0
-        for line, value in tqdm(self.segment_feature_vectors.items()):
-            # value是分段的特征向量，一条流线有n段
-            # print(value)  # N*12, 二维数组
-            segment_number = segment_number + len(value)
-            XMat = np.array(value)
-            ts = TSNE(n_components=2, init='pca')
-            ts.fit_transform(XMat)
-            embedded = ts.embedding_  # 各分段降维后
-            self.segment_feature_vectors_kdim[line] = np.array(embedded)
-        print("Finish T-SNE reduce dimension and Start Clustering: " + output_time())
+        # print("Start T-SNE reduce dimension: " + output_time())
+        # # 先T-SNE+KMeans
+        # segment_number = 0
+        # for line, value in tqdm(self.segment_feature_vectors.items()):
+        #     # value是分段的特征向量，一条流线有n段
+        #     # print(value)  # N*12, 二维数组
+        #     segment_number = segment_number + len(value)
+        #     XMat = np.array(value)
+        #     ts = TSNE(n_components=2, init='pca')
+        #     ts.fit_transform(XMat)
+        #     embedded = ts.embedding_  # 各分段降维后
+        #     self.segment_feature_vectors_kdim[line] = np.array(embedded)
+
+        print("Finish PCA reduce dimension and Start Clustering: " + output_time())
 
         X = np.array([pt for line, value in self.segment_feature_vectors_kdim.items() for pt in value], dtype="float64")  # 2668
         # X的长度就是总的分段数
@@ -606,7 +623,7 @@ class SegmentTokenizer(object):
         print("Finish Clustering: " + output_time())
         return cluster_labels, cluster_centers
 
-    def __clustering_KMeans(self, X, v=32):
+    def __clustering_KMeans(self, X, v=16):
         random_state = 28
         print("\nStart Clustering for KMeans to " + str(v) + " clusters, beginning with " + str(
             random_state) + " centroids...")
@@ -620,7 +637,7 @@ class SegmentTokenizer(object):
         print("number of clusters:" + str(len(np.unique(cluster_labels))))
         return cluster_labels, cluster_centers
 
-    def __clustering_KMedoids(self, X, v=32):
+    def __clustering_KMedoids(self, X, v=16):
         # error when encountering big dataset, it will stuck
         initial_medoids = kmeans_plusplus_initializer(X, v).initialize(return_index=True)
         print("\nInitial Medoids: ")
@@ -656,10 +673,12 @@ class SegmentTokenizer(object):
         # that will decrease the sizes of individual clusters and increase the number of clusters
         # eps = input("eps= (usually between 0 and 1, float)\n")
         eps = 0.27
+        eps = 0.8 # for 200
         # eps = self.calculate_epsilon_for_density()
         # print(eps)
         # min_samples = input("min_samples= (better for (size of dataset)/(50 to 70))\n")
         min_samples = 50  # double dataset dimensionality
+        min_samples = 4 # for 200 lines
         # 参数还要调整，现在0.4和20得到的簇还是100左右
 
         print("eps=" + str(eps))
