@@ -324,8 +324,9 @@ class SegmentTokenizer(object):
         self.all_line_lengths[line_index] = curve.get_total_length()
         self.all_line_arc_lengths[line_index] = curve.get_arc_length_matrix_array()
 
-    def segment_all_lines(self, sel_feature=sel_feature[0], n_segment=50):
+    def segment_all_lines(self, sel_feature=sel_feature[3], n_segment=50):
         print("\nsegment_all_lines...")
+        print("selected_feature: "+str(sel_feature))
         print("streamlines_lines_index_data =", len(self.streamlines_lines_index_data))
         for line_index in tqdm(range(len(self.streamlines_lines_index_data))):
             self.segment_one_line(line_index, sel_feature, n_segment)
