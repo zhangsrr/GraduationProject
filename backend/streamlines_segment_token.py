@@ -77,6 +77,7 @@ class SegmentTokenizer(object):
         # 为了流线聚类
         self.all_line_vocabulary_kdim_for_cluster = np.array([])
         self.all_streamlines_cluster_labels = []  # 各条流线所属的簇
+        self.all_cluster_modes_streamlines_labels = []  # 执行所有聚类算法得到的标签
         # 量化的聚类度量指标
         # self.silhouette_coefficient = .0
         # self.db_index = .0
@@ -111,9 +112,64 @@ class SegmentTokenizer(object):
         print("Start generate streamline word vector: " + output_time() + '\n')
         self.generate_streamlined_word_vector_expressions(v=32)
         # 对流线聚类
-        self.generate_cluster_for_streamlines(distant_typeid=2, v=16)
+        # self.generate_cluster_for_streamlines(distant_typeid=2, v=16)
+        self.exec_all_cluster_modes(v=8)
         # 聚类后的流线着色 可视化
         # 如果流线很密集，需要再压缩流场，跳到tool
+
+    def exec_all_cluster_modes(self, v):
+        XMat = []
+        for line, voca in self.all_line_vocabulary_vectors.items():
+            XMat.append(voca)
+
+        print("Start T-SNE reduce dimension: " + output_time())
+        # 先降维（不降维也可聚类？）
+        ts = TSNE(n_components=2, init='pca')
+        ts.fit_transform(XMat)
+        embedded = ts.embedding_
+
+        self.all_line_vocabulary_kdim_for_cluster = np.array(embedded)
+        print("Finish T-SNE reduce dimension and Start Clustering: " + output_time())
+
+        cluster_modes = ['KMeans', 'KMedoids', 'DBSCAN', 'OPTICS', 'MeanShift', 'AP', 'CURE']
+
+        # cluster_modes = ['MeanShift', 'AP', 'CURE']
+
+        X = embedded
+
+        for clu_mode in cluster_modes:
+            cluster_labels, cluster_centers = self.__start_clustering(cluster_mode=clu_mode, X=X, v=v)
+            self.all_cluster_modes_streamlines_labels.append(cluster_labels)
+            print("number of clusters: "+str(len(np.unique(cluster_labels))))
+
+            # filename1 = 'TSNE_pandas_to_csv_cluster_labels_' + self.cluster_mode + str(len(self.streamlines_lines_index_data)) + '.csv'
+            # df2 = pd.DataFrame(cluster_labels)
+            # df2.to_csv(filename1, header=False, index=False)
+            #
+            # filename2 = 'TSNE_pandas_to_csv_cluster_centers_' + self.cluster_mode +str(len(self.streamlines_lines_index_data))+ '.csv'
+            # df3 = pd.DataFrame(cluster_centers)
+            # df3.to_csv(filename2, header=False, index=False)
+
+            print("\nStart Calculating Clustering Validity Metrics: " + output_time())
+            my_validity = clustering_validity_analysis(data=X, labels=cluster_labels, centers=cluster_centers)
+
+            # 1. Silhouette Coefficient
+            # The score is higher when clusters are dense and well separated.
+            sil_score = my_validity.Silhouette_Coefficient()
+            print("Silhouette Coefficient: " + str(sil_score) + "... Time: " + output_time())
+
+            # 2. Davies-Bouldin Index
+            # Values closer to zero indicate a better partition.
+            db_index_score = my_validity.Davies_Bouldin_Index()
+            print("Davies-Bouldin Index: " + str(db_index_score) + "... Time: " + output_time())
+
+            # 5. The Xie-Beni index, a measure of compactness
+            XB_index = my_validity.Xie_Beni()
+            print("The Xie-Beni index: " + str(XB_index) + "... Time: " + output_time())
+
+            # 3. Hubert's gamma statistics
+            hubert_gamma_score = my_validity.Hubert_Gamma_Score()
+            print("Hubert Gamma Score: " + str(hubert_gamma_score) + "... Time: " + output_time())
 
     # 这里用不同的聚类算法
     def generate_cluster_for_streamlines(self, distant_typeid, v=32):
@@ -135,7 +191,7 @@ class SegmentTokenizer(object):
         X = embedded
         cluster_labels, cluster_centers = self.__start_clustering(cluster_mode=self.cluster_mode, X=X, v=v)
         self.all_streamlines_cluster_labels = cluster_labels
-        print(cluster_labels)
+        # print(cluster_labels)
 
         # filename1 = 'TSNE_pandas_to_csv_cluster_labels_' + self.cluster_mode + str(len(self.streamlines_lines_index_data)) + '.csv'
         # df2 = pd.DataFrame(cluster_labels)
@@ -609,7 +665,7 @@ class SegmentTokenizer(object):
             cluster_labels, cluster_centers = self.__clustering_MeanShift(X=X)
 
         # 2.6 AP ok
-        elif (cluster_mode == 'AffinityPropagation' or self.cluster_mode == 'AP'):
+        elif (cluster_mode == 'AffinityPropagation' or cluster_mode == 'AP'):
             cluster_labels, cluster_centers = self.__clustering_AP(X=X)
 
         # 2.7 CURE ok
@@ -775,13 +831,14 @@ class SegmentTokenizer(object):
         print("\nStart Clustering for MeanShift...")
         # time-complexity O(n^2), n is the number of points
         print("Parameters for estimating bandwidth: ")
-        quantile = 0.2
+        quantile = 0.4
+        quantile = 0.1 # for 2080lines  # quantile larger, bandwidth larger that is clusters less
         # quantile = input("quantile= (range from 0 to 1, float)\n")
         print("quantile=" + str(quantile))
         bandwidth = estimate_bandwidth(X, quantile=quantile)
         print("Parameters for Meanshift: ")
-        print("bandwidth=" + str(bandwidth * 2))
-        ms = MeanShift(bandwidth=bandwidth * 2, bin_seeding=True)
+        print("bandwidth=" + str(bandwidth))
+        ms = MeanShift(bandwidth=bandwidth, bin_seeding=True)
         ms.fit(X)
         cluster_labels = ms.predict(X)
         # print(cluster_labels)
@@ -797,8 +854,8 @@ class SegmentTokenizer(object):
     def __clustering_AP(self, X):
         print("\nStart Clustering for AffinityPropagation...")
         print("Parameters: ")
-        damping = 0.7
-        preference = -200  # smaller, clusters less
+        damping = 0.75
+        preference = -500  # smaller, clusters less
         max_iter = 1000
 
         # damping = input("damping= (range from 0 to 1, float)\n")

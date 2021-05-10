@@ -1,7 +1,4 @@
 # images
-*.png
-*.jpg
-*.jepg
 
 *.vtk
 *.csv

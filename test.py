@@ -7,16 +7,17 @@ import sys
 
 
 if __name__ == '__main__':
-    # vtk_name = 'tec025.5044_00_type00_streamlines_40_both_reduced_40'
+    # vtk_name = 'tec026.0031_00_type00_streamlines_40_both_reduced_40'
     # vtk_name = 'tec026.0031_00_type00_streamlines_40_both_reduced_200'
-    vtk_name = 'tec025.5044_00_type00_streamlines_40_both'
+    # vtk_name = 'tec025.5044_00_type00_streamlines_40_both'
+    vtk_name = 'tec026.0031_00_type00_streamlines_40_both'
     # path = "/home/gp2021-zsr/gp/"
     path = "C:/AllSoftwareDisk/PycharmProjects/GraduationProject/"
     src_streamlines_filename = path + "data/" + vtk_name + ".vtk"
     dest_streamlines_filename_prefix = path + "data/" + vtk_name + "_processed_"
     # dest_streamlines_count_list = [1, 2, 4, 8, 16, 32, 40]
 
-    dest_streamlines_count_list = [32]
+    dest_streamlines_count_list = [16]
 
     print("Time: " + output_time() + '\n')
 

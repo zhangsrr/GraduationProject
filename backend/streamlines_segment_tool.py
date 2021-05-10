@@ -114,26 +114,31 @@ class StreamlinesSegment(object):
             # 还需要测不同的distant_typeid的计算结果
             dissimilarity_matrix, prototype_index = t.calculate_main_streamline_index(cnt, distant_typeid=0)
             # 得到不相似度矩阵，压缩流场
-            labels = t.all_streamlines_cluster_labels  # Series
-            series_pd1 = pd.Series(labels)
-            labels_to_draw_filename = 'labels_to_draw_'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.csv'
-            series_pd1.to_csv(labels_to_draw_filename, header=False, index=False)
+            # labels = t.all_streamlines_cluster_labels  # Series
+            # self.draw_3d(labels=labels, prototype_index=prototype_index)
 
-            series_pd2 = pd.Series(prototype_index)
-            prototype_index_to_draw_filename = 'prototype_index_to_draw_'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.csv'
-            series_pd2.to_csv(prototype_index_to_draw_filename, header=False, index=False)
-            # 只可视化剩下的流线
+            # series_pd1 = pd.Series(labels)
+            # labels_to_draw_filename = 'labels_to_draw_'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.csv'
+            # series_pd1.to_csv(labels_to_draw_filename, header=False, index=False)
+            #
+            # series_pd2 = pd.Series(prototype_index)
+            # prototype_index_to_draw_filename = 'prototype_index_to_draw_'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.csv'
+            # series_pd2.to_csv(prototype_index_to_draw_filename, header=False, index=False)
+            # # 只可视化剩下的流线
+            #
+            # # df_pd3 = pd.DataFrame(self.streamlines_lines_index_data)
+            # lines_index_filename = 'streamlines_lines_index_to_draw'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.txt'
+            # # df_pd3.to_csv(lines_index_filename, header=False, index=False)
+            # np.savetxt(fname=lines_index_filename, X=self.streamlines_lines_index_data, fmt='%s', delimiter=',')
+            #
+            # df_pd4 = pd.DataFrame(self.streamlines_vertexs_data)
+            # streamlines_vertexs_data_filename = 'streamlines_vertexs_data_to_draw'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.csv'
+            # df_pd4.to_csv(streamlines_vertexs_data_filename, header=False, index=False)
 
-            # df_pd3 = pd.DataFrame(self.streamlines_lines_index_data)
-            lines_index_filename = 'streamlines_lines_index_to_draw'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.txt'
-            # df_pd3.to_csv(lines_index_filename, header=False, index=False)
-            np.savetxt(fname=lines_index_filename, X=self.streamlines_lines_index_data, fmt='%s', delimiter=',')
-
-            df_pd4 = pd.DataFrame(self.streamlines_vertexs_data)
-            streamlines_vertexs_data_filename = 'streamlines_vertexs_data_to_draw'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.csv'
-            df_pd4.to_csv(streamlines_vertexs_data_filename, header=False, index=False)
-
-            self.draw_3d(labels=labels, prototype_index=prototype_index)
+            t_cnt = 1
+            for labels in t.all_cluster_modes_streamlines_labels:
+                self.draw_3d(labels=labels, prototype_index=prototype_index, cluster_order=t_cnt)
+                t_cnt = t_cnt+1
 
             # 基于distant_typeid = 3（切比雪夫距离）计算不相似度.
             # 基于distant_typeid = 4（夹角余弦距离）计算不相似度.
@@ -178,7 +183,7 @@ class StreamlinesSegment(object):
         # error: could not broadcast input array from shape (2080,1) into shape (2080)
         # np.savetxt("mul_dissimilarity_matrix.txt", self.mul_dissimilarity_matrix, fmt='%f', delimiter=',')
 
-    def draw_3d(self, labels, prototype_index):
+    def draw_3d(self, labels, prototype_index, cluster_order=0):
         remainder_labels = []
         for idx in prototype_index:
             l = labels[idx]
@@ -200,27 +205,12 @@ class StreamlinesSegment(object):
         #         pts_data.append(self.streamlines_vertexs_data[pts_idx])
         #         label_for_pts.append(labels[line_idx])
         # 得到所有流线的所有点所在标签
-        fig = plt.figure(dpi=80, figsize=(8,6))
+        fig = plt.figure(dpi=80)
         # pts_data = np.array(pts_data)
         ax1 = plt.axes(projection='3d')
 
         # ax1 = fig.add_subplot(111, projection='3d')
         # ax2 = fig.add_subplot(122, projection='3d')
-
-
-        ax1.set_xlabel('x')
-        ax1.set_ylabel('y')
-        ax1.set_zlabel('z')
-        # ax1.set_title('Line Plot')
-
-        # ax2.set_xlabel('x')
-        # ax2.set_ylabel('y')
-        # ax2.set_zlabel('z')
-        # ax2.set_title('Scatter Plot')
-        #
-        # ax.set_xlabel('x')
-        # ax.set_ylabel('y')
-        # ax.set_zlabel('z')
 
         # OUR ONE LINER ADDED HERE:
         ax1.get_proj = lambda: np.dot(Axes3D.get_proj(ax1), np.diag([1, 0.3, 1, 1]))
@@ -268,7 +258,11 @@ class StreamlinesSegment(object):
         #         ax2.scatter3D(pts_data[idx, 0], pts_data[idx, 1], pts_data[idx, 2], c=color, alpha=1)
         #         # print(pts_data[idx, 0], pts_data[idx, 1], pts_data[idx, 2])
         plt.axis('off')
-        plt.show()
+        filename = str(len(self.streamlines_lines_index_data)) + 'lines_' + 'mode' + str(cluster_order)+'_'
+        plt.savefig(filename+'dpi150.png', dpi=150)
+        # plt.savefig(filename+'dpi100.png', dpi=100)
+
+        # plt.show()
 
     def __load_streamlines_data_from_vtk_file(self, vtk_format_filename):
         """
