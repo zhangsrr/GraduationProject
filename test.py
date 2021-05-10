@@ -9,8 +9,8 @@ import sys
 if __name__ == '__main__':
     # vtk_name = 'tec026.0031_00_type00_streamlines_40_both_reduced_40'
     # vtk_name = 'tec026.0031_00_type00_streamlines_40_both_reduced_200'
-    vtk_name = 'tec025.5044_00_type00_streamlines_40_both'
-    # vtk_name = 'tec026.0031_00_type00_streamlines_40_both'
+    # vtk_name = 'tec025.5044_00_type00_streamlines_40_both'
+    vtk_name = 'tec026.0031_00_type00_streamlines_40_both'
     # path = "/home/gp2021-zsr/gp/"
     path = "C:/AllSoftwareDisk/PycharmProjects/GraduationProject/"
     src_streamlines_filename = path + "data/" + vtk_name + ".vtk"
