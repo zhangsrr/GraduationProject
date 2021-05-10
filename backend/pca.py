@@ -48,7 +48,7 @@ def pca(XMat, k):
     avgs = np.tile(average, (m, 1))  # avgs是m行，每行一个average
     data_adjust = XMat - avgs
     covX = np.cov(data_adjust.T)   #计算协方差矩阵
-    # 避免inf和nan
+    # 如何避免inf和nan
     featValue, featVec=  np.linalg.eig(covX)  #求解协方差矩阵的特征值和特征向量
     index = np.argsort(-featValue) #按照featValue进行从大到小排序
     finalData = []

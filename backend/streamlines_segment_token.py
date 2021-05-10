@@ -24,7 +24,7 @@ import pandas as pd
 
 
 import torch
-from torch import linalg as LA
+# from torch import linalg as LA  # not fit for torch1.2.0
 from sklearn.neighbors import NearestNeighbors  # for computing epsilon, but time consuming large
 from tqdm import tqdm
 
@@ -37,8 +37,8 @@ from mpl_toolkits.mplot3d import Axes3D
 
 np.set_printoptions(threshold=sys.maxsize)
 
-# device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-device = 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# device = 'cpu'
 
 sel_feature = [
     "curvature",  # 曲率
@@ -101,7 +101,7 @@ class SegmentTokenizer(object):
         # print(self.all_point_features)
         # exit()
         # 根据特征值对流线进行分段. sel_feature[0]曲率，分段只能依靠一个特征值进行分段？
-        self.segment_all_lines(sel_feature[0], n_segment=50) #【注】此处的n_segment应该由外部主函数传入. 一般取50-100足够
+        self.segment_all_lines(sel_feature[1], n_segment=50) #【注】此处的n_segment应该由外部主函数传入. 一般取50-100足够
         # 计算流线分段的特征向量.
         self.calculate_all_segment_vectors(dim=12) #【注】此处的dim应该由外部主函数传入，暂时写为特定值. dim只能是len(sel_feature)的倍数
         # 基于流线分段的特征向量生成词汇. 用到聚类算法
@@ -112,8 +112,10 @@ class SegmentTokenizer(object):
         print("Start generate streamline word vector: " + output_time() + '\n')
         self.generate_streamlined_word_vector_expressions(v=32)
         # 对流线聚类
-        # self.generate_cluster_for_streamlines(distant_typeid=2, v=16)
-        self.exec_all_cluster_modes(v=8)
+        if self.cluster_mode == 'All':
+            self.exec_all_cluster_modes(v=8)
+        else:
+            self.generate_cluster_for_streamlines(distant_typeid=2, v=8)
         # 聚类后的流线着色 可视化
         # 如果流线很密集，需要再压缩流场，跳到tool
 
@@ -283,19 +285,19 @@ class SegmentTokenizer(object):
         x_tensor = torch.from_numpy(x).to(device)
         y_tensor = torch.from_numpy(y).to(device)
         if distant_typeid == 0:  # 欧几里得距离.
-            # distance = np.linalg.norm(x-y)
-            distance = LA.norm(x_tensor - y_tensor).cpu()
+            distance = np.linalg.norm(x-y)
+            # distance = LA.norm(x_tensor - y_tensor).cpu()
         elif distant_typeid == 1:  # 余弦距离.
             distance = 1 - np.dot(x,y)/(np.linalg.norm(x)*np.linalg.norm(y))
         elif distant_typeid == 2:  # 曼哈顿距离.
-            # distance = np.linalg.norm(x-y,ord=1)
-            distance = LA.norm(x_tensor-y_tensor, ord=1).cpu()
+            distance = np.linalg.norm(x-y,ord=1)
+            # distance = LA.norm(x_tensor-y_tensor, ord=1).cpu()
         elif distant_typeid == 3:  # 切比雪夫距离.
-            # distance = np.linalg.norm(x-y,ord=np.inf)
-            distance = LA.norm(x_tensor-y_tensor, ord=float('inf')).cpu()
+            distance = np.linalg.norm(x-y,ord=np.inf)
+            # distance = LA.norm(x_tensor-y_tensor, ord=float('inf')).cpu()
         elif distant_typeid == 4:  # 夹角余弦(Cosine).
-            # distance = np.dot(x,y)/(np.linalg.norm(x)*(np.linalg.norm(y)))
-            distance = (torch.dot(x_tensor, y_tensor)/(LA.norm(x_tensor)*LA.norm(y_tensor))).cpu()
+            distance = np.dot(x,y)/(np.linalg.norm(x)*(np.linalg.norm(y)))
+            # distance = (torch.dot(x_tensor, y_tensor)/(LA.norm(x_tensor)*LA.norm(y_tensor))).cpu()
         elif distant_typeid == 5:  # 汉明距离(Hamming distance).
             distance = np.shape(np.nonzero(x-y)[0])[0]
         elif distant_typeid == 6:  # 杰卡德相似系数(Jaccard similarity coefficient).
@@ -455,13 +457,17 @@ class SegmentTokenizer(object):
         # print("self.segment_feature_vectors.items():")
         # print(self.segment_feature_vectors.items())
 
-        print("Start PCA reduce dimension: " + output_time())
+        print("Start TSNE reduce dimension: " + output_time())
         for line, value in tqdm(self.segment_feature_vectors.items()):
             # print("line, value: " + str(line))
             # print(value)
             # segment_feature_vectors是dict, line就是key
-            XMat = np.matrix(value)
-            finalData, reconMat = pca(XMat, k)
+            # XMat = np.matrix(value)
+            # finalData, reconMat = pca(XMat, k)
+            XMat = np.array(value)
+            ts = TSNE(n_components=k, init='pca')
+            ts.fit_transform(XMat)
+            finalData = ts.embedding_
             self.segment_feature_vectors_kdim[line] = np.array(finalData)
         # # 2. 聚类
         # # 每一种聚类方法最后只需保留cluster_labels和cluster_centers
@@ -486,7 +492,7 @@ class SegmentTokenizer(object):
         #     embedded = ts.embedding_  # 各分段降维后
         #     self.segment_feature_vectors_kdim[line] = np.array(embedded)
 
-        print("Finish PCA reduce dimension and Start Clustering: " + output_time())
+        print("Finish TSNE reduce dimension and Start Clustering: " + output_time())
 
         X = np.array([pt for line, value in self.segment_feature_vectors_kdim.items() for pt in value], dtype="float64")  # 2668
         # X的长度就是总的分段数

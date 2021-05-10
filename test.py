@@ -9,8 +9,8 @@ import sys
 if __name__ == '__main__':
     # vtk_name = 'tec026.0031_00_type00_streamlines_40_both_reduced_40'
     # vtk_name = 'tec026.0031_00_type00_streamlines_40_both_reduced_200'
-    # vtk_name = 'tec025.5044_00_type00_streamlines_40_both'
-    vtk_name = 'tec026.0031_00_type00_streamlines_40_both'
+    vtk_name = 'tec025.5044_00_type00_streamlines_40_both'
+    # vtk_name = 'tec026.0031_00_type00_streamlines_40_both'
     # path = "/home/gp2021-zsr/gp/"
     path = "C:/AllSoftwareDisk/PycharmProjects/GraduationProject/"
     src_streamlines_filename = path + "data/" + vtk_name + ".vtk"
@@ -24,7 +24,8 @@ if __name__ == '__main__':
     print(">>>>>>>>>>>>>>>[" + vtk_name + ".vtk]<<<<<<<<<<<<<<<")
     print("Start filtering streamlines...")
     obj = StreamlinesSegment()
-    print(">>>>>>>>>>>>>>> choose one clustering algorithm <<<<<<<<<<<<<<<")
+    print(">>>>>>>>>>>>>>> choose clustering algorithm <<<<<<<<<<<<<<<")
+    print("0. All")
     print("1. KMeans")
     print("2. KMedoids")
     print("3. DBSCAN")
@@ -33,7 +34,9 @@ if __name__ == '__main__':
     print("6. Affinity Propagation")
     print("7. CURE")
     cluster_idx = input("clustering algorithm index: ")
-    if cluster_idx == '1':
+    if cluster_idx == '0':
+        cluster_mode = 'All'
+    elif cluster_idx == '1':
         cluster_mode = "KMeans"
     elif cluster_idx == '2':
         cluster_mode = "KMedoids"
@@ -73,7 +76,8 @@ if __name__ == '__main__':
             cluster_mode == "MeanShift" or
             cluster_mode == "AP" or
             cluster_mode == "AffinityPropagation" or
-            cluster_mode == "CURE")
+            cluster_mode == "CURE" or
+            cluster_mode == "All")
 
     obj.filter_streamlines(src_streamlines_filename,
                            dest_streamlines_count_list,

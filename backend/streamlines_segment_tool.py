@@ -114,8 +114,14 @@ class StreamlinesSegment(object):
             # 还需要测不同的distant_typeid的计算结果
             dissimilarity_matrix, prototype_index = t.calculate_main_streamline_index(cnt, distant_typeid=0)
             # 得到不相似度矩阵，压缩流场
-            # labels = t.all_streamlines_cluster_labels  # Series
-            # self.draw_3d(labels=labels, prototype_index=prototype_index)
+            if cluster_mode == 'All':
+                t_cnt = 1
+                for labels in t.all_cluster_modes_streamlines_labels:
+                    self.draw_3d(labels=labels, prototype_index=prototype_index, cluster_order=t_cnt)
+                    t_cnt = t_cnt + 1
+            else:
+                labels = t.all_streamlines_cluster_labels  # Series
+                self.draw_3d(labels=labels, prototype_index=prototype_index)
 
             # series_pd1 = pd.Series(labels)
             # labels_to_draw_filename = 'labels_to_draw_'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.csv'
@@ -134,11 +140,6 @@ class StreamlinesSegment(object):
             # df_pd4 = pd.DataFrame(self.streamlines_vertexs_data)
             # streamlines_vertexs_data_filename = 'streamlines_vertexs_data_to_draw'+cluster_mode+str(len(self.streamlines_lines_index_data))+'lines.csv'
             # df_pd4.to_csv(streamlines_vertexs_data_filename, header=False, index=False)
-
-            t_cnt = 1
-            for labels in t.all_cluster_modes_streamlines_labels:
-                self.draw_3d(labels=labels, prototype_index=prototype_index, cluster_order=t_cnt)
-                t_cnt = t_cnt+1
 
             # 基于distant_typeid = 3（切比雪夫距离）计算不相似度.
             # 基于distant_typeid = 4（夹角余弦距离）计算不相似度.
